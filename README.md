@@ -2,10 +2,12 @@
 
 A retro, top-down, colourful tower defense game for the Nintendo Wii, played with the
 **Wii Classic Controller** (no motion controls). 16:9, 60 fps, retro-style graphics and clean, modern-sounding sound effects.
+**New monsters** arrive every 5 waves - zombies (5), pumpkin zombies (10, they split in two when they die), witches (15, they fly and heal other monsters), magical black cats (20, very fast, they blink forward) and ghosts (25). Every wave is a little tougher than the last.
+
 **Endless:** every level keeps sending bigger waves until the keep falls - how far can you get? Your best wave per level is shown on the title screen (kept until you close the game).
 
 Build **arrow**, **cannon** and **frost** towers along the road and stop slimes, bats, golems and bosses
-from reaching your keep. There are **4 levels**:
+from reaching your haunted house. There are **4 levels**:
 
 1. **Green Meadow** - the sunny classic
 2. **Stormy Moor** - dark, rainy slate-blue moorland with lightning

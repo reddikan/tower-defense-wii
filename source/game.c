@@ -62,10 +62,21 @@ static const struct { float hp, speed; int gold, leak; } EN_DEF[EN_COUNT] = {
     {  24, 28,   4,  1},   /* slime */
     {  14, 50,   5,  1},   /* bat   (flying: cannons can't hit it) */
     { 110, 18,  12,  2},   /* golem */
-    {1200, 15, 120, 10}    /* boss  */
+    {1200, 15, 120, 10},   /* boss  */
+    {  60, 24,   8,  2},   /* zombie (from wave 5) */
+    { 220, 20,  16,  3},   /* pumpkin zombie (wave 10): splits into two zombies when it dies */
+    {  90, 34,  14,  3},   /* witch (wave 15): flies, and heals the monsters around her */
+    {  40, 62,   7,  2},   /* magical black cat (wave 20): very fast, blinks forward */
+    { 160, 30,  20,  4}    /* ghost (wave 25): flies, tough */
 };
+static int is_flyer(int type) { return type == EN_BAT || type == EN_WITCH || type == EN_GHOST; }
 
 /* Enemy hit points grow by this fraction of their base HP every wave. */
+/* hit points also multiply by this every wave (on top of HP_GROWTH) */
+#ifndef HP_COMPOUND
+#define HP_COMPOUND 1.03f
+#endif
+
 #ifndef HP_GROWTH
 #define HP_GROWTH 0.36f
 #endif
@@ -349,7 +360,8 @@ static void draw_text_center(uint8_t *fb, int y, const char *t, int col, int s)
 /* ------------------------------------------------------------------ */
 typedef struct { int w, h; uint8_t d[256]; } Sprite;
 enum { S_SLIME, S_BAT0, S_BAT1, S_GOLEM, S_BOSS, S_T_ARROW, S_T_CANNON, S_T_FROST,
-       S_TREE, S_ROCK, S_PORTAL, S_HEART, S_COIN, S_DEAD, S_GRAVE, S_LAMP, S_SKEL0, S_SKEL1, S_PUMP0, S_PUMP1, S_PUMP2, S_COUNT };
+       S_TREE, S_ROCK, S_PORTAL, S_HEART, S_COIN, S_DEAD, S_GRAVE, S_LAMP, S_SKEL0, S_SKEL1, S_PUMP0, S_PUMP1, S_PUMP2,
+       S_ZOMBIE, S_PUMPZ, S_WITCH, S_CAT, S_GHOST, S_COUNT };
 static Sprite SPR[S_COUNT];
 static int sprites_ready;
 
@@ -382,6 +394,36 @@ static const char *const R_BOSS[16] = {
     "..kRRkkrrkkRRk..", "...kkrrrrrrkk...", "...krrrrrrrrk...", "..krwwrrrrwwrk..",
     "..krwkrrrrwkrk..", "..krrrrkkrrrrk..", "..krrrrrrrrrrk..", "...kRwkwkwkwRk..",
     "...kkRRRRRRkk...", ".....kkkkkk.....", "................", "................"
+};
+static const char *const R_ZOMBIE[16] = {
+    "................", ".....kkkkkk.....", "....kEeeeeEk....", "....kewkkwek....",
+    "....keeeeeek....", "....kekkkkek....", ".....kkeekk.....", "..kkkkNnnNkkkk..",
+    ".keekNnnnnNkeek.", ".kekkNnNNnNkkek.", "..k.kNnnnnNk.k..", ".....kNNNNk.....",
+    ".....kBBkBBk....", ".....kBk.kBk....", "....kkkk.kkkk...", "................"
+};
+static const char *const R_PUMPZ[16] = {
+    "................", "......kEk.......", ".....kkEkk......", "....koooooook...",
+    "...kooyooyooyk..", "...kokkookkook..", "...kooookkooook.", "...kooykykykook.",
+    "....kookkkkoook.", "..kkkkkNnnkkkk..", ".keekkNnnnNkkeek", ".kekk.NnnnN.kek.",
+    ".....kBBkBBk....", ".....kBk.kBk....", "....kkkk.kkkk...", "................"
+};
+static const char *const R_WITCH[16] = {
+    ".......kk.......", "......kPPk......", ".....kPPPPk.....", "....kPppppPk....",
+    "..kkkkkkkkkkkk..", "....kmmmmmmk....", "....kmykkymk....", "....kmmmkmmk....",
+    ".....kkmmkk.....", "...kPPPPPPPPk...", "..kPPpPPPPpPPk..", ".nnnnnnnnnnnnnn.",
+    "..kPPkkkkkkPPk..", "...kk......kk...", "................", "................"
+};
+static const char *const R_CAT[16] = {
+    "................", "................", "................", "..k.k...........",
+    "..kkk......kk...", "..kkkk.....kkk..", "..kykyk....kk...", "..kkkkkk...kk...",
+    "...kkkkkkkkkk...", "...kkkkkkkkkk...", "...kkdkkkkdkk...", "...kkkkkkkkkk...",
+    "...kdk....kdk...", "...kkk....kkk...", "................", "................"
+};
+static const char *const R_GHOST[16] = {
+    "................", ".....kkkkkk.....", "....kwwwwwwk....", "...kwwwwwwwwk...",
+    "...kwkkwwkkwk...", "...kwkkwwkkwk...", "...kwwwkkwwwk...", "...kwwwkkwwwk...",
+    "..kwwwwwwwwwwk..", "..kwwwwwwwwwwk..", "..kwlwwwwwwlwk..", "..kwwwwwwwwwwk..",
+    "..kwk.kwwk.kwk..", "...k...kk...k...", "................", "................"
 };
 static const char *const R_T_ARROW[16] = {
     "................", ".......kk.......", "......keek......", ".....keemek.....",
@@ -526,6 +568,11 @@ static void sprites_init(void)
     make_sprite(&SPR[S_BAT1],     R_BAT1,     16, 16);
     make_sprite(&SPR[S_GOLEM],    R_GOLEM,    16, 16);
     make_sprite(&SPR[S_BOSS],     R_BOSS,     16, 16);
+    make_sprite(&SPR[S_ZOMBIE],   R_ZOMBIE,   16, 16);
+    make_sprite(&SPR[S_PUMPZ],    R_PUMPZ,    16, 16);
+    make_sprite(&SPR[S_WITCH],    R_WITCH,    16, 16);
+    make_sprite(&SPR[S_CAT],      R_CAT,      16, 16);
+    make_sprite(&SPR[S_GHOST],    R_GHOST,    16, 16);
     make_sprite(&SPR[S_T_ARROW],  R_T_ARROW,  16, 16);
     make_sprite(&SPR[S_T_CANNON], R_T_CANNON, 16, 16);
     make_sprite(&SPR[S_T_FROST],  R_T_FROST,  16, 16);
@@ -741,30 +788,42 @@ static void bg_blit(uint8_t *bg, const Sprite *s, int x, int y)
         }
 }
 
-/* the keep at the exit (drawn procedurally; the flag animates at runtime) */
+/* the haunted house at the exit (drawn procedurally; its windows flicker at runtime) */
 static void bg_keep(uint8_t *bg, int storm)
 {
     int x = LV->wp[LV->nwp - 1][0] * TILE, y = LV->wp[LV->nwp - 1][1] * TILE;
-    for (int j = 0; j < 16; j++) for (int i = 0; i < 16; i++) bgpx(bg, x + i, y + j, C_DIRT1);
-    for (int j = 4; j < 16; j++) for (int i = 1; i < 15; i++) bgpx(bg, x + i, y + j, C_STONE);
-    for (int j = 4; j < 16; j++) { bgpx(bg, x + 1, y + j, C_BLACK); bgpx(bg, x + 14, y + j, C_BLACK); }
-    for (int i = 1; i < 15; i++) { bgpx(bg, x + i, y + 15, C_BLACK); }
-    for (int j = 5; j < 15; j++) bgpx(bg, x + 13, y + j, C_DKSTONE);          /* shaded right side */
-    for (int k = 0; k < 4; k++) {          /* merlons */
-        for (int j = 2; j < 5; j++) for (int i = 0; i < 3; i++) bgpx(bg, x + 1 + k * 4 + i, y + j, C_STONE);
-        for (int i = 0; i < 3; i++) bgpx(bg, x + 1 + k * 4 + i, y + 1, C_BLACK);
-        bgpx(bg, x + k * 4, y + 2, C_BLACK); bgpx(bg, x + k * 4, y + 3, C_BLACK);
+    if (storm != 2) {                                    /* 2 = just the house, drawn over the finished (lit) ground */
+        for (int j = 0; j < 16; j++) for (int i = 0; i < 16; i++) bgpx(bg, x + i, y + j, C_DIRT1);
+        for (int i = 2; i < 14; i++) bgpx(bg, x + i, y + 15, C_DKBROWN);                 /* ground shadow */
     }
-    for (int j = 8; j < 16; j++) for (int i = 5; i < 11; i++) bgpx(bg, x + i, y + j, C_DKBROWN);
-    for (int i = 6; i < 10; i++) bgpx(bg, x + i, y + 7, C_DKBROWN);
-    bgpx(bg, x + 9, y + 12, C_YELLOW);                                         /* door handle */
-    for (int j = 5; j < 7; j++) for (int i = 3; i < 5; i++) bgpx(bg, x + i, y + j, C_DKSTONE);
-    for (int j = 5; j < 7; j++) for (int i = 11; i < 13; i++) bgpx(bg, x + i, y + j, C_DKSTONE);
-    for (int j = 0; j < 5; j++) bgpx(bg, x + 8, y + j, C_BLACK);          /* flag pole */
-    if (storm) {                                         /* lit windows */
-        for (int j = 5; j < 7; j++) for (int i = 3; i < 5; i++) bgpx(bg, x + i, y + j, C_YELLOW);
-        for (int j = 5; j < 7; j++) for (int i = 11; i < 13; i++) bgpx(bg, x + i, y + j, C_YELLOW);
+    for (int j = 7; j < 15; j++) for (int i = 2; i < 14; i++) bgpx(bg, x + i, y + j, C_STONE);      /* walls */
+    for (int j = 7; j < 15; j++) { bgpx(bg, x + 2, y + j, C_BLACK); bgpx(bg, x + 13, y + j, C_BLACK); }
+    for (int j = 8; j < 15; j++) { bgpx(bg, x + 12, y + j, C_DKSTONE); bgpx(bg, x + 11, y + j, C_DKSTONE); }   /* shaded side */
+    for (int i = 2; i < 14; i++) bgpx(bg, x + i, y + 14, C_BLACK);
+    for (int k = 0; k < 6; k++) bgpx(bg, x + 3 + k * 2, y + 12 + (k & 1), C_DKSTONE);   /* cracks */
+    for (int j = 11; j < 14; j++) bgpx(bg, x + 4, y + j, C_STONE);
+    /* chimney */
+    for (int j = 1; j < 5; j++) for (int i = 11; i < 13; i++) bgpx(bg, x + i, y + j, C_STONE);
+    for (int j = 1; j < 5; j++) { bgpx(bg, x + 10, y + j, C_BLACK); bgpx(bg, x + 13, y + j, C_BLACK); }
+    bgpx(bg, x + 11, y + 0, C_BLACK); bgpx(bg, x + 12, y + 0, C_BLACK);
+    /* roof: a steep, dark, slightly crooked peak */
+    for (int j = 0; j < 7; j++) {
+        int hw = 1 + j, l = 8 - hw, r = 7 + hw;
+        for (int i = l; i <= r; i++) bgpx(bg, x + i, y + j, (i > 8 + j / 2) ? C_BLACK : C_DKPURPLE);
+        bgpx(bg, x + l, y + j, C_BLACK); bgpx(bg, x + r, y + j, C_BLACK);
+        if (j == 0) { bgpx(bg, x + 7, y, C_BLACK); bgpx(bg, x + 8, y, C_BLACK); }
     }
+    for (int i = 0; i < 16; i++) bgpx(bg, x + i, y + 7, C_BLACK);                    /* eaves */
+    for (int j = 1; j < 7; j += 2) for (int i = 8 - j; i < 8 + j; i += 2) bgpx(bg, x + i, y + j + 1, C_DKPURPLE);   /* shingles */
+    /* windows (dark here; they flicker live), a boarded door and a rotten shutter */
+    for (int j = 9; j < 11; j++) for (int i = 4; i < 6; i++) bgpx(bg, x + i, y + j, C_DKBLUE);
+    for (int j = 9; j < 11; j++) for (int i = 10; i < 12; i++) bgpx(bg, x + i, y + j, C_DKBLUE);
+    for (int j = 11; j < 15; j++) for (int i = 6; i < 10; i++) bgpx(bg, x + i, y + j, C_DKBROWN);
+    for (int i = 6; i < 10; i++) bgpx(bg, x + i, y + 11, C_BLACK);
+    bgpx(bg, x + 6, y + 12, C_BLACK); bgpx(bg, x + 9, y + 12, C_BLACK);
+    bgpx(bg, x + 8, y + 13, C_YELLOW);                                               /* doorknob */
+    bgpx(bg, x + 3, y + 9, C_BLACK); bgpx(bg, x + 3, y + 10, C_BLACK);
+    bgpx(bg, x + 12, y + 9, C_BLACK); bgpx(bg, x + 12, y + 10, C_BLACK);
 }
 
 /* ---- storm levels: dark, wet ground with glowing scenery ---- */
@@ -904,6 +963,8 @@ static void build_bg_storm(Game *g)
         }
     glow_buf(bg, MAP_H * TILE, LV->wp[LV->nwp - 1][0] * TILE + 8, LV->wp[LV->nwp - 1][1] * TILE + 8, 22, 1);
     glow_buf(bg, MAP_H * TILE, LV->wp[0][0] * TILE + 8, LV->wp[0][1] * TILE + 8, 20, 2);
+
+    bg_keep(bg, 2);                                      /* the house keeps its own colours inside the glow */
 
     /* remember whether each live-drawn scenery tile sits in a glow, so its sprite can be lit the same way */
     for (int ty = 0; ty < MAP_H; ty++)
@@ -1281,19 +1342,29 @@ int game_sell(Game *g, int tx, int ty)
 /* ------------------------------------------------------------------ */
 /* Simulation                                                          */
 /* ------------------------------------------------------------------ */
-static void spawn_enemy(Game *g, int type)
+/* every wave is a little tougher than the last: hit points compound on top of the steady climb */
+static float wave_hp_scale(int wave)
+{
+    int k = wave > 0 ? wave - 1 : 0;
+    return (1.0f + HP_GROWTH * (float)k) * powf(HP_COMPOUND, (float)k);
+}
+
+static void spawn_enemy_at(Game *g, int type, float dist)
 {
     for (int i = 0; i < MAX_ENEMIES; i++)
         if (!g->en[i].alive) {
             Enemy *e = &g->en[i];
             memset(e, 0, sizeof *e);
             e->alive = 1; e->type = (uint8_t)type; e->uid = ++g->next_uid;
-            float scale = (1.0f + HP_GROWTH * (float)(g->wave > 0 ? g->wave - 1 : 0)) * LV->hp_mult;
-            e->hp = e->maxhp = EN_DEF[type].hp * scale;
-            e->x = path_x[0]; e->y = path_y[0]; e->slow_f = 1.0f;
+            e->hp = e->maxhp = EN_DEF[type].hp * (type == EN_BOSS ? 1.0f + HP_GROWTH * (float)(g->wave > 1 ? g->wave - 1 : 0) : wave_hp_scale(g->wave)) * LV->hp_mult;   /* bosses only get the steady climb */
+            e->dist = dist; e->ab_t = 1.0f + rndf(g);
+            e->slow_f = 1.0f;
+            if (dist > 0) { float x, y; game_path_point(dist, &x, &y); e->x = x; e->y = y; while (e->seg < path_n - 2 && dist > path_cum[e->seg + 1]) e->seg++; }
+            else { e->x = path_x[0]; e->y = path_y[0]; }
             return;
         }
 }
+static void spawn_enemy(Game *g, int type) { spawn_enemy_at(g, type, 0); }
 
 static int enemies_alive(const Game *g)
 {
@@ -1307,43 +1378,61 @@ int game_best_wave(int level) { return level < 0 || level >= NUM_LEVELS ? 0 : be
 
 /* The hand-made tables cover the first waves; after that each wave is the last table row, bigger every time,
    with a boss every fifth wave, so the game never ends until the keep falls. */
-static void wave_counts(int wave, uint8_t out[4])
+static const char *const NEW_NAME[EN_COUNT] = {0, 0, 0, 0, "ZOMBIES", "PUMPKIN ZOMBIES", "WITCHES", "BLACK CATS", "GHOSTS"};
+static const int NEW_WAVE[EN_COUNT] = {0, 0, 0, 0, 5, 10, 15, 20, 25};   /* a new kind of monster every 5 waves */
+
+static void wave_counts(int wave, uint8_t out[EN_COUNT])
 {
-    if (wave <= LV->nwaves) { memcpy(out, LV->waves[wave - 1], 4); return; }
-    const uint8_t *base = LV->waves[LV->nwaves - 1];
-    int k = wave - LV->nwaves;
-    for (int t = 0; t < 3; t++) {
-        int n = base[t] * (100 + 14 * k) / 100;
-        out[t] = (uint8_t)(n > 70 ? 70 : n);
+    memset(out, 0, EN_COUNT);
+    if (wave <= LV->nwaves) memcpy(out, LV->waves[wave - 1], 4);
+    else {
+        const uint8_t *base = LV->waves[LV->nwaves - 1];
+        int k = wave - LV->nwaves;
+        for (int t = 0; t < 3; t++) {
+            int n = base[t] * (100 + 14 * k) / 100;
+            out[t] = (uint8_t)(n > 60 ? 60 : n);
+        }
+        int b = (wave % 5 == 0) ? 1 + k / 8 : 0;
+        out[3] = (uint8_t)(b > 8 ? 8 : b);
     }
-    int b = (wave % 5 == 0) ? 1 + k / 8 : 0;
-    out[3] = (uint8_t)(b > 8 ? 8 : b);
+    /* the newer monsters join in from their wave on, and their numbers keep growing */
+    for (int t = EN_ZOMBIE; t < EN_COUNT; t++) {
+        if (wave < NEW_WAVE[t]) continue;
+        int k = wave - NEW_WAVE[t];
+        static const uint8_t first[EN_COUNT] = {0, 0, 0, 0, 3, 2, 2, 5, 2};
+        static const uint8_t per5[EN_COUNT]  = {0, 0, 0, 0, 3, 2, 2, 4, 2};     /* extra monsters every 5 waves */
+        int n = first[t] + per5[t] * k / 5 + k / 2;
+        out[t] = (uint8_t)(n > 40 ? 40 : n);
+    }
 }
 
 static void start_wave(Game *g)
 {
     g->wave++;
-    uint8_t w[4];
+    uint8_t w[EN_COUNT];
     wave_counts(g->wave, w);
     int n = 0;
-    for (int t = 0; t < 4; t++)
-        for (int k = 0; k < w[t] && n < 256; k++) g->spawn_q[n++] = (uint8_t)t;
+    for (int t = 0; t < EN_COUNT; t++)
+        for (int k = 0; k < w[t] && n < 512; k++) g->spawn_q[n++] = (uint8_t)t;
     for (int i = n - 1; i > 0; i--) {                    /* shuffle */
         int j = (int)(rnd(g) % (uint32_t)(i + 1));
         uint8_t tmp = g->spawn_q[i]; g->spawn_q[i] = g->spawn_q[j]; g->spawn_q[j] = tmp;
     }
     g->spawn_n = n; g->spawn_i = 0; g->spawn_t = 0.6f; g->wave_active = 1;
     char b[40];
-    if (w[3]) snprintf(b, sizeof b, "BOSS WAVE %d!", g->wave);
-    else      snprintf(b, sizeof b, "WAVE %d", g->wave);
-    set_banner(g, b, w[3] ? C_RED : C_YELLOW);
-    sfx(g, w[3] ? SFX_BOSS : SFX_WAVE);
+    int debut = 0;
+    for (int t = EN_ZOMBIE; t < EN_COUNT; t++) if (g->wave == NEW_WAVE[t]) debut = t;
+    if (debut)     snprintf(b, sizeof b, "WAVE %d: NEW %s!", g->wave, NEW_NAME[debut]);
+    else if (w[3]) snprintf(b, sizeof b, "BOSS WAVE %d!", g->wave);
+    else           snprintf(b, sizeof b, "WAVE %d", g->wave);
+    set_banner(g, b, debut ? C_PINK : (w[3] ? C_RED : C_YELLOW));
+    sfx(g, (debut || w[3]) ? SFX_BOSS : SFX_WAVE);
 }
 
 static void kill_enemy(Game *g, Enemy *e)
 {
-    static const uint8_t c1[EN_COUNT] = {C_LTGREEN, C_PINK, C_LIGHT, C_ORANGE};
-    static const uint8_t c2[EN_COUNT] = {C_GREEN, C_PURPLE, C_STONE, C_RED};
+    static const uint8_t c1[EN_COUNT] = {C_LTGREEN, C_PINK, C_LIGHT, C_ORANGE, C_LTGREEN, C_ORANGE, C_PURPLE, C_PURPLE, C_WHITE};
+    static const uint8_t c2[EN_COUNT] = {C_GREEN, C_PURPLE, C_STONE, C_RED, C_DKGREEN, C_YELLOW, C_PINK, C_YELLOW, C_CYAN};
     int gold = EN_DEF[e->type].gold;
     g->gold += gold; g->kills++;
     add_text(g, e->x, e->y - 8, gold);
@@ -1362,6 +1451,11 @@ static void kill_enemy(Game *g, Enemy *e)
         sfx(g, SFX_KILL);
     }
     e->alive = 0;
+    if (e->type == EN_PUMPKIN) {                         /* the pumpkin bursts open: two zombies crawl out */
+        burst(g, e->x, e->y, 24, C_ORANGE, C_YELLOW, 110, 0.6f);
+        spawn_enemy_at(g, EN_ZOMBIE, e->dist > 6 ? e->dist - 6 : 0);
+        spawn_enemy_at(g, EN_ZOMBIE, e->dist > 12 ? e->dist - 12 : 0);
+    }
 }
 
 static void hurt_enemy(Game *g, Enemy *e, float dmg)
@@ -1380,10 +1474,41 @@ static void update_enemies(Game *g, float dt)
         if (e->hitflash > 0) e->hitflash -= dt;
         float f = 1.0f;
         if (e->slow_t > 0) { e->slow_t -= dt; f = e->slow_f; }
-        e->dist += EN_DEF[e->type].speed * f * dt;
+        float spd = EN_DEF[e->type].speed * (1.0f + 0.008f * (float)(g->wave > 1 ? (g->wave < 40 ? g->wave : 40) - 1 : 0));
+        if (g->state == ST_PLAY) {
+            if (e->type == EN_CAT) {                             /* magical blink: pops a little way ahead */
+                e->ab_t -= dt;
+                if (e->ab_t <= 0) {
+                    e->ab_t = 1.8f + rndf(g) * 1.6f;
+                    burst(g, e->x, e->y, 10, C_PURPLE, C_PINK, 70, 0.35f);
+                    e->dist += 22.0f;
+                    if (e->dist < path_len) { float nx, ny; game_path_point(e->dist, &nx, &ny); burst(g, nx, ny, 10, C_PURPLE, C_PINK, 70, 0.35f); }
+                }
+            } else if (e->type == EN_WITCH) {                    /* heals every monster close by */
+                e->ab_t -= dt;
+                if (e->ab_t <= 0) {
+                    e->ab_t = 1.6f;
+                    add_ring(g, e->x, e->y, 30, 0.35f, C_PINK);
+                    for (int j = 0; j < MAX_ENEMIES; j++) {
+                        Enemy *o = &g->en[j];
+                        if (!o->alive || o == e || o->type == EN_BOSS) continue;
+                        float dx = o->x - e->x, dy = o->y - e->y;
+                        if (dx * dx + dy * dy < 30.0f * 30.0f && o->hp < o->maxhp) {
+                            o->hp += o->maxhp * 0.12f; if (o->hp > o->maxhp) o->hp = o->maxhp;
+                            add_part(g, o->x, o->y - 4, 0, -25, 0.4f, C_PINK, 1);
+                            add_part(g, o->x + 2, o->y - 2, 0, -20, 0.35f, C_LTGREEN, 1);
+                        }
+                    }
+                }
+            }
+        }
+        e->dist += spd * f * dt;
         if (e->dist >= path_len) {
             e->alive = 0;
             if (g->state == ST_PLAY) {
+#ifdef LEAKDBG
+                fprintf(stderr, "leak wave %d type %d hp %.0f lives %d\n", g->wave, e->type, e->maxhp, g->lives);
+#endif
                 g->lives -= EN_DEF[e->type].leak;
                 g->hurt_t = 0.45f;
                 g->shake_t = EN_DEF[e->type].leak >= 10 ? 0.6f : 0.25f;
@@ -1451,7 +1576,7 @@ static void update_towers(Game *g, float dt)
             for (int i = 0; i < MAX_ENEMIES; i++) {
                 const Enemy *e = &g->en[i];
                 if (!e->alive) continue;
-                if (t->type == TW_CANNON && e->type == EN_BAT) continue;   /* can't hit flyers */
+                if (t->type == TW_CANNON && is_flyer(e->type)) continue;   /* can't hit flyers */
                 float dx = e->x - x, dy = e->y - y;
                 if (dx * dx + dy * dy > range * range) continue;
                 if (e->dist > bestd) { bestd = e->dist; best = i; }          /* furthest along */
@@ -1477,7 +1602,7 @@ static void hit_projectile(Game *g, Proj *p)
         float r = TW_SPLASH[TW_CANNON][p->level];
         for (int i = 0; i < MAX_ENEMIES; i++) {
             Enemy *e = &g->en[i];
-            if (!e->alive || e->type == EN_BAT) continue;
+            if (!e->alive || is_flyer(e->type)) continue;
             float dx = e->x - p->x, dy = e->y - p->y;
             if (dx * dx + dy * dy <= r * r) hurt_enemy(g, e, p->dmg);
         }
@@ -1568,7 +1693,7 @@ static void sim_step(Game *g, float dt)
         if (g->spawn_t <= 0) {
             int type = g->spawn_q[g->spawn_i++];
             spawn_enemy(g, type);
-            static const float gap[EN_COUNT] = {0.75f, 0.45f, 1.3f, 2.5f};
+            static const float gap[EN_COUNT] = {0.75f, 0.45f, 1.3f, 2.5f, 0.8f, 1.2f, 1.0f, 0.4f, 1.0f};
             g->spawn_t = gap[type];
         }
     } else if (enemies_alive(g) == 0) {
@@ -1783,15 +1908,21 @@ static void draw_enemy(uint8_t *fb, const Game *g, const Enemy *e)
     case EN_SLIME: spr = S_SLIME; bob = (((g->frame >> 3) + e->uid) & 1) ? -1 : 0; break;
     case EN_BAT:   spr = ((g->frame >> 2) & 1) ? S_BAT1 : S_BAT0; bob = (int)lrintf(sinf((float)g->frame * 0.15f + (float)e->uid) * 1.5f); break;
     case EN_GOLEM: spr = S_GOLEM; bob = (((g->frame >> 4) + e->uid) & 1) ? -1 : 0; break;
+    case EN_ZOMBIE: spr = S_ZOMBIE; bob = (((g->frame >> 4) + e->uid) & 1) ? -1 : 0; break;     /* shambles */
+    case EN_PUMPKIN: spr = S_PUMPZ; bob = (((g->frame >> 4) + e->uid) & 1) ? -1 : 0; break;
+    case EN_WITCH: spr = S_WITCH; bob = (int)lrintf(sinf((float)g->frame * 0.1f + (float)e->uid) * 2.0f); break;
+    case EN_CAT:   spr = S_CAT; bob = (((g->frame >> 2) + e->uid) & 1) ? -1 : 0; break;
+    case EN_GHOST: spr = S_GHOST; bob = (int)lrintf(sinf((float)g->frame * 0.07f + (float)e->uid) * 2.5f); break;
     default:       spr = S_BOSS;  bob = (((g->frame >> 3) + e->uid) & 1) ? -1 : 0; break;
     }
     if (e->slow_t > 0) mode = M_FROZEN;
     if (e->hitflash > 0) mode = M_FLASH;
+    else if (e->type == EN_GHOST && ((g->frame / 5 + e->uid) % 4) == 0) mode = M_GHOST;     /* flickers in and out */
     int x = (int)lrintf(e->x) - 8, y = (int)lrintf(e->y) - 8 + bob;
-    if (e->type == EN_BAT) y -= 3;
+    if (is_flyer(e->type)) y -= 3;
     /* soft shadow (smaller and lighter for flyers, which hover above the ground) */
     int sy = (int)lrintf(e->y) + 5;
-    shadow_ellipse(fb, (int)lrintf(e->x), sy + (e->type == EN_BAT ? 3 : 0), e->type == EN_BOSS ? 7 : (e->type == EN_BAT ? 3 : 5));
+    shadow_ellipse(fb, (int)lrintf(e->x), sy + (is_flyer(e->type) ? 3 : 0), e->type == EN_BOSS ? 7 : (is_flyer(e->type) ? 3 : 5));
     blit_add = ambient_at(g, x + 8, y + 12);
     blit(fb, &SPR[spr], x, y, mode);
     blit_add = 0;
@@ -1911,13 +2042,32 @@ static void draw_cursor(uint8_t *fb, const Game *g)
         dotted_circle(fb, x + 8, y + 8, TW_RANGE[type][lvl], t->used ? C_YELLOW : C_WHITE, (int)(g->frame >> 3));
 }
 
+/* the haunted house: eerie windows that flicker, an attic light, and a wisp of smoke from the chimney */
 static void draw_keep_flag(uint8_t *fb, const Game *g)
 {
-    int x = LV->wp[LV->nwp - 1][0] * TILE, y = MAP_Y + LV->wp[LV->nwp - 1][1] * TILE, f = (int)((g->frame >> 4) & 1);
-    rect(fb, x + 9, y, 4, 1, C_RED);
-    rect(fb, x + 9 + f, y + 1, 4, 1, C_RED);
-    rect(fb, x + 9, y + 2, 3, 1, C_DKRED);
-    px(fb, x + 12 + f, y + 1, C_DKRED);
+    int x = LV->wp[LV->nwp - 1][0] * TILE, y = MAP_Y + LV->wp[LV->nwp - 1][1] * TILE;
+    int f = (int)(g->frame & 0xFFFFFF);
+    if (g->level) {                                              /* the house keeps its own colours inside the flickering glow */
+        int tx = LV->wp[LV->nwp - 1][0] * TILE, ty = LV->wp[LV->nwp - 1][1] * TILE;
+        for (int j = 0; j < TILE; j++) memcpy(fb + (MAP_Y + ty + j) * SCREEN_W + tx, g->bg + (ty + j) * SCREEN_W + tx, TILE);
+    }
+    static const uint8_t lit[4] = {C_YELLOW, C_ORANGE, C_WHITE, C_YELLOW};
+    int add = g->level ? (int)(g->bg[(LV->wp[LV->nwp - 1][1] * TILE + 12) * SCREEN_W + LV->wp[LV->nwp - 1][0] * TILE + 8] & 0xE0) : 0;
+    for (int w = 0; w < 2; w++) {
+        int wx = x + (w ? 10 : 4);
+        uint32_t h = hash2(w, 3, f / 5);
+        int c = (h % 9 == 0) ? C_DKBROWN : lit[h % 4];           /* sometimes the light blinks out */
+        for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) px(fb, wx + i, y + 9 + j, c + (c == C_DKBROWN ? 0 : add));
+        px(fb, wx, y + 9, (c == C_DKBROWN ? c : C_WHITE) + (c == C_DKBROWN ? 0 : add));
+    }
+    if (((f / 40) & 3) == 0) {                                   /* a ghostly face in the attic window */
+        px(fb, x + 7, y + 4, C_WHITE); px(fb, x + 8, y + 4, C_WHITE); px(fb, x + 7, y + 5, C_CYAN); px(fb, x + 8, y + 5, C_WHITE);
+    }
+    for (int k = 0; k < 3; k++) {                                /* smoke */
+        int t = (f / 3 + k * 14) % 42;
+        int sx = x + 11 + (int)lrintf(trig_sin[(t * 24 + k * 200) & 1023] * 1.5f) + t / 14, sy = y - t / 4;
+        if (sy >= MAP_Y && t < 36) px(fb, sx, sy, t < 18 ? C_LIGHT : C_GRAY);
+    }
 }
 
 /* ---- storm effects: glow, lightning bolt, rain ---- */
@@ -1946,6 +2096,9 @@ static void draw_glows(uint8_t *fb, const Game *g)
         const Enemy *e = &g->en[i];
         if (!e->alive) continue;
         if (e->type == EN_BOSS) gl(fb, (int)e->x, (int)e->y, 14, 1, &budget);
+        else if (e->type == EN_WITCH || e->type == EN_CAT) gl(fb, (int)e->x, (int)e->y, 11, 2, &budget);
+        else if (e->type == EN_GHOST) gl(fb, (int)e->x, (int)e->y, 12, 2, &budget);
+        else if (e->type == EN_PUMPKIN) gl(fb, (int)e->x, (int)e->y, 9, 1, &budget);
         else if (e->slow_t > 0) gl(fb, (int)e->x, (int)e->y, 8, 2, &budget);
     }
     for (int i = 0; i < MAX_RING; i++) {

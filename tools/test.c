@@ -377,7 +377,7 @@ levels:
         frame(&g, 0, 0);
         CHECK(g.state == ST_PLAY && g.wave == 40 && g.spawn_n > 100, "waves continue past the hand-made tables (wave 40 has a big crowd)");
         g.wave = 44; g.wave_active = 0; g.wave_timer = 0; frame(&g, 0, 0);
-        CHECK(g.wave == 45 && g.spawn_n <= 256, "wave 45 (a boss wave) still fits the spawn queue");
+        CHECK(g.wave == 45 && g.spawn_n <= 512, "wave 45 (a boss wave) still fits the spawn queue");
         game_init(&g); game_start_level(&g, 2);
         for (int i = 0; i < 60 * 200 && g.state == ST_PLAY; i++) frame(&g, 0, 0);
         CHECK(g.state == ST_OVER && game_best_wave(2) >= 1 && g.new_best, "losing records a new best wave");

@@ -46,7 +46,7 @@ enum {
 
 typedef enum { ST_TITLE, ST_PLAY, ST_PAUSE, ST_OVER, ST_WIN } GameState;
 enum { TW_ARROW, TW_CANNON, TW_FROST, TW_COUNT };
-enum { EN_SLIME, EN_BAT, EN_GOLEM, EN_BOSS, EN_COUNT };
+enum { EN_SLIME, EN_BAT, EN_GOLEM, EN_BOSS, EN_ZOMBIE, EN_PUMPKIN, EN_WITCH, EN_CAT, EN_GHOST, EN_COUNT };
 
 typedef struct {
     uint8_t used, type, level;      /* level is 0..2 */
@@ -57,7 +57,7 @@ typedef struct {
 typedef struct {
     uint8_t  alive, type;
     uint32_t uid;
-    float    dist, x, y, hp, maxhp, slow_t, slow_f, hitflash;
+    float    dist, x, y, hp, maxhp, slow_t, slow_f, hitflash, ab_t;
     int      seg;
 } Enemy;
 
@@ -92,7 +92,7 @@ typedef struct {
 
     int     wave_active;
     float   wave_timer;
-    uint8_t spawn_q[256];
+    uint8_t spawn_q[512];
     int     spawn_n, spawn_i;
     float   spawn_t;
     float   title_t;
