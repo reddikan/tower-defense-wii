@@ -25,9 +25,10 @@
 
 #define MAX_ENEMIES 160
 #define MAX_PROJ    160
-#define MAX_PART    800
+#define MAX_PART    400
 #define MAX_TEXT    24
 #define MAX_RING    24
+#define MAX_ARC     16
 
 /* Input bits (platform layer maps the Classic Controller onto these). */
 enum {
@@ -41,11 +42,13 @@ enum {
     BTN_Y     = 1 << 7,
     BTN_L     = 1 << 8,
     BTN_R     = 1 << 9,
-    BTN_PLUS  = 1 << 10
+    BTN_PLUS  = 1 << 10,
+    BTN_ZIN   = 1 << 11,        /* right stick up: zoom in */
+    BTN_ZOUT  = 1 << 12         /* right stick down: zoom out */
 };
 
 typedef enum { ST_TITLE, ST_PLAY, ST_PAUSE, ST_OVER, ST_WIN } GameState;
-enum { TW_ARROW, TW_CANNON, TW_FROST, TW_COUNT };
+enum { TW_ARROW, TW_CANNON, TW_FROST, TW_STORM, TW_COUNT };
 enum { EN_SLIME, EN_BAT, EN_GOLEM, EN_BOSS, EN_ZOMBIE, EN_PUMPKIN, EN_WITCH, EN_CAT, EN_GHOST, EN_COUNT };
 
 typedef struct {
@@ -72,6 +75,7 @@ typedef struct {
 typedef struct { float x, y, vx, vy, life; uint8_t col, size; } Part;
 typedef struct { float x, y, life; int val; } FText;
 typedef struct { float x, y, maxr, life, max_life; uint8_t col; } Ring;
+typedef struct { float x0, y0, x1, y1, life; uint8_t seed; } Arc;      /* a chain-lightning bolt between two points */
 
 typedef struct {
     GameState state;
@@ -89,6 +93,9 @@ typedef struct {
     Part  pt[MAX_PART];
     FText ft[MAX_TEXT];
     Ring  rg[MAX_RING];
+    Arc   ar[MAX_ARC];
+    int   zoom_lvl;                 /* 0, 1, 2 -> 1x, 2x, 3x (right stick) */
+    float zoom, zfx, zfy;           /* current zoom factor and the map point the view is centred on */
 
     int     wave_active;
     float   wave_timer;

@@ -6,7 +6,7 @@ A retro, top-down, colourful tower defense game for the Nintendo Wii, played wit
 
 **Endless:** every level keeps sending bigger waves until the keep falls - how far can you get? Your best wave per level is shown on the title screen (kept until you close the game).
 
-Build **arrow**, **cannon** and **frost** towers along the road and stop slimes, bats, golems and bosses
+Build **arrow**, **cannon**, **frost** and **storm** (chain-lightning) magic towers - floating orbs on stone pedestals - along the road and stop slimes, bats, golems and bosses
 from reaching your haunted house. There are **4 levels**:
 
 1. **Green Meadow** - the sunny classic
@@ -14,7 +14,7 @@ from reaching your haunted house. There are **4 levels**:
 3. **Haunted Marsh** - a glowing green graveyard bog with a zig-zag road
 4. **Thunder Peak** - violet rock and crystals under a thunderstorm
 
-The three storm levels have rain, silent lightning flashes, and glowing lamps, plants, portal, keep
+The three storm levels have rain, lightning flashes with soft thunder, and glowing lamps, plants, portal, keep
 and shots. Clearing a level takes you to the next one with fresh gold and lives. On the title screen press
 **left/right** on the D-pad to jump straight to any level.
 
@@ -28,6 +28,7 @@ and shots. Clearing a level takes you to the next one with fresh gold and lives.
 | L / R (or ZL / ZR) | change the selected tower type |
 | X | call the next wave early (bonus gold for the time saved) |
 | Y | fast-forward on/off |
+| Right stick up/down | zoom in / out around the cursor (1x, 2x, 3x) |
 | + | pause menu (Up/Down + A: resume, sound on/off, quit to title) |
 | - | switch screen mode: the game starts filling a 16:9 screen; press - for a letterboxed picture on a 4:3 TV |
 | HOME | quit |

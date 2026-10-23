@@ -29,7 +29,7 @@ static const uint8_t VOL[SFX_COUNT] = {
     /* MOVE */ 70,  /* SELECT */ 100, /* BUILD */ 200, /* UPGRADE */ 170, /* SELL */ 150, /* ERROR */ 150,
     /* ARROW */ 100, /* CANNON */ 235, /* FROST */ 120, /* EXPLODE */ 235, /* KILL */ 110, /* LEAK */ 220,
     /* WAVE */ 190, /* BOSS */ 240, /* CLEAR */ 200, /* START */ 190, /* PAUSE */ 120, /* OVER */ 220,
-    /* WIN */ 220
+    /* WIN */ 220, /* ZAP */ 120, /* THUNDER */ 105
 };
 
 /* ------------------------------------------------------------------ */
@@ -341,6 +341,19 @@ void audio_init(void)
         tone(0.08f * (float)i, 0.25f, nf[i], nf[i], 0.35f, 0.003f, 0.12f, W_FM, 2.0f, 1.0f);
     }
     finish_fx(SFX_WIN, 0.45f, 0.5f);
+
+    begin();                                                         /* storm tower: a crackling electric zap */
+    tone(0, 0.18f, 2600, 500, 0.45f, 0.001f, 0.07f, W_FM, 1.0f, 4.0f);
+    tone(0.03f, 0.15f, 1800, 300, 0.3f, 0.001f, 0.05f, W_FM, 1.5f, 3.0f);
+    tone(0, 0.2f, 300, 90, 0.4f, 0.002f, 0.07f, W_SIN, 0, 0);
+    finish_fx(SFX_ZAP, 0.3f, 0.3f);
+
+    begin();                                                         /* thunder: soft, distant, rolling rumble */
+    tone(0.00f, 1.6f, 70, 34, 0.9f, 0.08f, 0.7f, W_SIN, 0, 0);
+    tone(0.05f, 1.2f, 105, 52, 0.45f, 0.08f, 0.5f, W_SIN, 0, 0);
+    tone(0.30f, 1.1f, 58, 30, 0.6f, 0.15f, 0.5f, W_SIN, 0, 0);
+    noise(0, 1.5f, 160, 50, 0.7f, 0.5f, 0.1f, 0.6f, F_LP);
+    finish_fx(SFX_THUNDER, 0.2f, 0.5f);
 }
 
 const int16_t *audio_data(int id) { return SFX[id]; }

@@ -85,11 +85,11 @@ static int count_towers(const Game *g)
 
 static void bot_act(Game *g, int aggression)
 {
-    static const int order[] = {TW_ARROW, TW_CANNON, TW_ARROW, TW_FROST, TW_CANNON, TW_ARROW, TW_FROST, TW_CANNON};
+    static const int order[] = {TW_ARROW, TW_CANNON, TW_ARROW, TW_FROST, TW_STORM, TW_CANNON, TW_ARROW, TW_FROST, TW_STORM};
     int n = count_towers(g);
     int want_new = (n < 4 + g->wave * aggression / 10);
     if (want_new) {
-        int type = order[n % 8], bx = -1, by = -1, bs = 0;
+        int type = order[n % 9], bx = -1, by = -1, bs = 0;
         if (g->gold < game_tower_cost(type)) return;
         for (int y = 0; y < MAP_H; y++) for (int x = 0; x < MAP_W; x++) {
             if (!game_is_buildable(g, x, y)) continue;
@@ -113,7 +113,7 @@ static void bot_act(Game *g, int aggression)
 /* a more careful player: keeps enough towers for the wave, then pours gold into upgrades (arrows and cannons first) */
 static void smart_act(Game *g)
 {
-    static const int order[] = {TW_ARROW, TW_CANNON, TW_ARROW, TW_FROST, TW_CANNON, TW_ARROW};
+    static const int order[] = {TW_ARROW, TW_CANNON, TW_ARROW, TW_FROST, TW_STORM, TW_CANNON, TW_ARROW, TW_FROST};
     int n = count_towers(g);
     int need = 4 + g->wave * 6 / 10;
     if (n >= need) {
@@ -125,7 +125,7 @@ static void smart_act(Game *g)
         }
         if (bx >= 0) { if (g->gold >= game_upgrade_cost(g->towers[by][bx].type, g->towers[by][bx].level)) game_upgrade(g, bx, by); return; }
     }
-    int type = order[n % 6], bx = -1, by = -1, bs = 0;
+    int type = order[n % 8], bx = -1, by = -1, bs = 0;
     if (g->gold < game_tower_cost(type)) return;
     for (int y = 0; y < MAP_H; y++) for (int x = 0; x < MAP_W; x++) {
         if (!game_is_buildable(g, x, y)) continue;
@@ -230,7 +230,7 @@ int main(int argc, char **argv)
     CHECK(g.sel == TW_CANNON, "R selects next tower type");
     CHECK(heard(&g, SFX_SELECT), "select blip queued");
     frame(&g, BTN_L, BTN_L); frame(&g, BTN_L, BTN_L); frame(&g, 0, 0);
-    CHECK(g.sel == TW_FROST, "L cycles back (wraps)");
+    CHECK(g.sel == TW_STORM, "L cycles back (wraps to the 4th weapon)");
     gold = g.gold;
     frame(&g, BTN_B, BTN_B); frame(&g, 0, 0);
     CHECK(!g.towers[4][7].used && g.gold > gold, "B sells the tower for a refund");
@@ -321,15 +321,15 @@ levels:
         /* weather: rain + lightning + thunder run on their own; a strike changes the palette */
         uint8_t pal0[PAL_N][3], pal1[PAL_N][3];
         game_get_palette(&g, pal0);
-        int flashed = 0;
+        int flashed = 0, thunder = 0;
         for (int i = 0; i < 60 * 30; i++) {
             frame(&g, 0, 0);
-            drain(&g);
+            { int id; while ((id = game_pop_sound(&g)) >= 0) thunder += id == SFX_THUNDER; }
             game_get_palette(&g, pal1);
             if (memcmp(pal0, pal1, sizeof pal0)) flashed = 1;
         }
-        snprintf(msg, sizeof msg, "level %d: lightning flashes the palette (silently)", lv + 1);
-        CHECK(flashed, msg);
+        snprintf(msg, sizeof msg, "level %d: lightning flashes the palette and soft thunder follows (%d rumbles in 30 s)", lv + 1, thunder);
+        CHECK(flashed && thunder > 0, msg);
         /* scene: let the bot dig in for a while, then take screenshots (calm, bolt, mid-flash) */
         game_start_level(&g, lv);
         for (int i = 0; i < 60 * 80 && g.state == ST_PLAY; i++) {
@@ -369,6 +369,42 @@ levels:
     CHECK(g.level == NUM_LEVELS - 1, "title screen: left wraps around to the last level");
     frame(&g, BTN_A, BTN_A);
     CHECK(g.state == ST_PLAY && g.level == NUM_LEVELS - 1, "A starts the chosen level");
+
+    printf("[5b] storm weapon, zoom, giant boss\n");
+    {
+        game_init(&g); game_start_level(&g, 0);
+        g.gold = 1000;
+        CHECK(game_build(&g, 2, 3, TW_STORM), "can build the 4th weapon (storm)");
+        frame(&g, 0, 0);
+        /* three monsters in a cluster inside its range */
+        for (int i = 0; i < 3; i++) { g.en[i].alive = 1; g.en[i].type = EN_GOLEM; g.en[i].hp = g.en[i].maxhp = 500; g.en[i].dist = 40 + i * 6; g.en[i].uid = 100 + i; g.en[i].slow_f = 1; }
+        g.towers[3][2].cd = 0;
+        game_update(&g, 0, 0, 0.001f);
+        int damaged = 0; for (int i = 0; i < 3; i++) damaged += g.en[i].hp < 500;
+        CHECK(damaged >= 2, "the storm bolt chains to several monsters");
+        int arcs = 0; for (int i = 0; i < MAX_ARC; i++) arcs += g.ar[i].life > 0;
+        CHECK(arcs >= 2, "chain lightning draws arcs");
+        CHECK(heard(&g, SFX_ZAP), "storm tower plays the zap");
+        /* zoom with the right stick */
+        game_init(&g); frame(&g, BTN_A, BTN_A);
+        static uint8_t a[SCREEN_W * SCREEN_H], b2[SCREEN_W * SCREEN_H];
+        game_render(&g, a);
+        frame(&g, BTN_ZIN, BTN_ZIN); frame(&g, BTN_ZIN, BTN_ZIN);
+        for (int i = 0; i < 60; i++) frame(&g, 0, 0);
+        CHECK(g.zoom_lvl == 2 && g.zoom > 2.9f, "right stick up zooms in to 3x");
+        game_render(&g, b2); dump(&g, b2, "zoomed");
+        int diff = 0; for (int i = SCREEN_W * 20; i < SCREEN_W * SCREEN_H; i++) diff += a[i] != b2[i];
+        CHECK(diff > 5000, "the zoomed picture is different");
+        frame(&g, BTN_ZOUT, BTN_ZOUT); frame(&g, BTN_ZOUT, BTN_ZOUT);
+        for (int i = 0; i < 90; i++) frame(&g, 0, 0);
+        CHECK(g.zoom_lvl == 0 && g.zoom < 1.05f, "right stick down zooms back out");
+        /* the boss is a giant ghost */
+        game_init(&g); frame(&g, BTN_A, BTN_A);
+        g.en[0].alive = 1; g.en[0].type = EN_BOSS; g.en[0].hp = g.en[0].maxhp = 1000; g.en[0].dist = 60; g.en[0].uid = 900; g.en[0].slow_f = 1;
+        g.en[1].alive = 1; g.en[1].type = EN_GOLEM; g.en[1].hp = g.en[1].maxhp = 100; g.en[1].dist = 130; g.en[1].uid = 901; g.en[1].slow_f = 1;
+        g.wave_timer = 99; for (int i = 0; i < 40; i++) frame(&g, 0, 0);
+        game_render(&g, fb); dump(&g, fb, "boss");
+    }
 
     printf("[6] endless waves, best wave, sound switch + bot playthroughs\n");
     {

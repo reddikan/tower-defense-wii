@@ -6,7 +6,7 @@
 
 static const char *NAMES[SFX_COUNT] = {
     "move", "select", "build", "upgrade", "sell", "error", "arrow", "cannon", "frost", "explode",
-    "kill", "leak", "wave", "boss", "clear", "start", "pause", "gameover", "win"
+    "kill", "leak", "wave", "boss", "clear", "start", "pause", "gameover", "win", "zap", "thunder"
 };
 
 static void w32(FILE *f, uint32_t v) { fwrite(&v, 4, 1, f); }

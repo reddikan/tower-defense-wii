@@ -143,6 +143,14 @@ static u32 read_buttons(void)
     if (h & (WPAD_CLASSIC_BUTTON_FULL_R | WPAD_CLASSIC_BUTTON_ZR)) b |= BTN_R;
     if (h & WPAD_CLASSIC_BUTTON_PLUS)  b |= BTN_PLUS;
     if (h & WPAD_CLASSIC_BUTTON_MINUS) b |= X_MINUS;
+    {   /* right stick: up zooms in, down zooms out */
+        WPADData *wd = WPAD_Data(0);
+        if (wd && wd->exp.type == WPAD_EXP_CLASSIC && wd->exp.classic.rjs.mag > 0.6f) {
+            float a = wd->exp.classic.rjs.ang;            /* degrees, 0 = up, clockwise */
+            if (a < 40.0f || a > 320.0f) b |= BTN_ZIN;
+            else if (a > 140.0f && a < 220.0f) b |= BTN_ZOUT;
+        }
+    }
     if ((h & WPAD_CLASSIC_BUTTON_HOME) || (h & WPAD_BUTTON_HOME)) b |= X_HOME;
     return b;
 }

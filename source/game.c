@@ -47,16 +47,17 @@ static inline uint8_t dark_of(uint8_t c) { return (uint8_t)((c & 0xE0) | DARK[c 
 /* ------------------------------------------------------------------ */
 /* Game data tables                                                    */
 /* ------------------------------------------------------------------ */
-static const char *const TW_NAME[TW_COUNT] = {"ARROW", "CANNON", "FROST"};
-static const int   TW_COST[TW_COUNT]      = {40, 80, 60};
-static const int   TW_UP[TW_COUNT][2]     = {{50, 90}, {100, 170}, {70, 120}};
-static const float TW_DMG[TW_COUNT][3]    = {{6, 11, 20}, {22, 40, 75}, {2, 4, 7}};
-static const float TW_CD[TW_COUNT][3]     = {{0.45f, 0.38f, 0.30f}, {1.4f, 1.3f, 1.2f}, {0.9f, 0.8f, 0.7f}};
-static const float TW_RANGE[TW_COUNT][3]  = {{52, 58, 66}, {44, 48, 54}, {46, 52, 58}};
-static const float TW_SPLASH[TW_COUNT][3] = {{0, 0, 0}, {18, 21, 25}, {14, 16, 18}};
+static const char *const TW_NAME[TW_COUNT] = {"ARROW", "CANNON", "FROST", "STORM"};
+static const int   TW_COST[TW_COUNT]      = {40, 80, 60, 110};
+static const int   TW_UP[TW_COUNT][2]     = {{50, 90}, {100, 170}, {70, 120}, {120, 190}};
+static const float TW_DMG[TW_COUNT][3]    = {{6, 11, 20}, {22, 40, 75}, {2, 4, 7}, {10, 18, 32}};
+static const float TW_CD[TW_COUNT][3]     = {{0.45f, 0.38f, 0.30f}, {1.4f, 1.3f, 1.2f}, {0.9f, 0.8f, 0.7f}, {1.0f, 0.9f, 0.8f}};
+static const float TW_RANGE[TW_COUNT][3]  = {{52, 58, 66}, {44, 48, 54}, {46, 52, 58}, {50, 56, 62}};
+static const float TW_SPLASH[TW_COUNT][3] = {{0, 0, 0}, {18, 21, 25}, {14, 16, 18}, {0, 0, 0}};
+static const int   STORM_CHAIN[3]         = {3, 4, 5};        /* the storm bolt jumps to this many monsters */
 static const float TW_SLOWF[3]            = {0.55f, 0.45f, 0.35f};
 static const float TW_SLOWT[3]            = {1.5f, 1.8f, 2.2f};
-static const float PROJ_SPEED[TW_COUNT]   = {230, 140, 170};
+static const float PROJ_SPEED[TW_COUNT]   = {230, 140, 170, 0};
 
 static const struct { float hp, speed; int gold, leak; } EN_DEF[EN_COUNT] = {
     {  24, 28,   4,  1},   /* slime */
@@ -93,7 +94,8 @@ static const uint8_t WAVES[NUM_WAVES][4] = {
 static const float SFX_GAP[SFX_COUNT] = {
     0.03f, 0.05f, 0.10f, 0.10f, 0.10f, 0.20f,   /* move select build upgrade sell error */
     0.09f, 0.10f, 0.11f, 0.09f, 0.075f, 0.15f,  /* arrow cannon frost explode kill leak */
-    0.50f, 0.50f, 0.50f, 0.50f, 0.10f, 1.00f, 1.00f  /* wave boss clear start pause over win */
+    0.50f, 0.50f, 0.50f, 0.50f, 0.10f, 1.00f, 1.00f, /* wave boss clear start pause over win */
+    0.08f, 1.50f                                     /* zap thunder */
 };
 
 /* Storm levels (2-4): same enemies, bigger numbers */
@@ -358,8 +360,8 @@ static void draw_text_center(uint8_t *fb, int y, const char *t, int col, int s)
 /* ------------------------------------------------------------------ */
 /* Sprites (characters map to palette entries, '.' = transparent)      */
 /* ------------------------------------------------------------------ */
-typedef struct { int w, h; uint8_t d[256]; } Sprite;
-enum { S_SLIME, S_BAT0, S_BAT1, S_GOLEM, S_BOSS, S_T_ARROW, S_T_CANNON, S_T_FROST,
+typedef struct { int w, h; uint8_t d[1024]; } Sprite;
+enum { S_SLIME, S_BAT0, S_BAT1, S_GOLEM, S_BOSS, S_T_ARROW, S_T_CANNON, S_T_FROST, S_T_STORM,
        S_TREE, S_ROCK, S_PORTAL, S_HEART, S_COIN, S_DEAD, S_GRAVE, S_LAMP, S_SKEL0, S_SKEL1, S_PUMP0, S_PUMP1, S_PUMP2,
        S_ZOMBIE, S_PUMPZ, S_WITCH, S_CAT, S_GHOST, S_COUNT };
 static Sprite SPR[S_COUNT];
@@ -388,12 +390,6 @@ static const char *const R_GOLEM[16] = {
     "....kSySSySk....", "....kSSkkSSk....", "..kkkkSSSSkkkk..", ".kSSSkSllSkSSSk.",
     ".kSSTkSSSSkSTSk.", ".kSTTkSSSTkTTSk.", ".kkkkkSSSSTkkkk.", "....kSSSkkSTk...",
     "....kSSSk.kSTk..", "....kTTTk.kTTk..", "....kkkkk.kkkk..", "................"
-};
-static const char *const R_BOSS[16] = {
-    ".k............k.", ".kk..........kk.", ".kRk........kRk.", ".kRRk.kkkk.kRRk.",
-    "..kRRkkrrkkRRk..", "...kkrrrrrrkk...", "...krrrrrrrrk...", "..krwwrrrrwwrk..",
-    "..krwkrrrrwkrk..", "..krrrrkkrrrrk..", "..krrrrrrrrrrk..", "...kRwkwkwkwRk..",
-    "...kkRRRRRRkk...", ".....kkkkkk.....", "................", "................"
 };
 static const char *const R_ZOMBIE[16] = {
     "................", ".....kkkkkk.....", "....kEeeeeEk....", "....kewkkwek....",
@@ -426,22 +422,28 @@ static const char *const R_GHOST[16] = {
     "..kwk.kwwk.kwk..", "...k...kk...k...", "................", "................"
 };
 static const char *const R_T_ARROW[16] = {
-    "................", ".......kk.......", "......keek......", ".....keemek.....",
-    "....keemmmek....", "...keeemmmeek...", "..kEEEEEEEEEEk..", "..kkkkkkkkkkkk..",
-    "...kSSSSSSSSk...", "...kSgSSSSgSk...", "...kSSSkkSSSk...", "...kSTSkkSTSk...",
-    "...kSTSSSSTSk...", "..kkTTTTTTTTkk..", "..kkkkkkkkkkkk..", "................"
+    "................", "................", "................", "................",
+    "................", "....k......k....", "....kS....Sk....", "....kSS..SSk....",
+    "....kkSSSSkk....", "...kSSSSSSSSk...", "...kSgSSSSgSk...", "...kSSSeeSSSk...",
+    "...kSSSeeSSSk...", "..kSTTTTTTTTSk..", "..kkTTTTTTTTkk..", "..kkkkkkkkkkkk.."
 };
 static const char *const R_T_CANNON[16] = {
-    "................", ".....kkkkkk.....", "....kddddddk....", "....kdgddddk....",
-    "....kdgddddk....", "....kddddddk....", "....kkddddkk....", "...kRRRRRRRRk...",
-    "...kkkkkkkkkk...", "..kSSSSSSSSSSk..", "..kSgSSSSSSgSk..", "..kSSSSddSSSSk..",
-    "..kSTSSddSSSTk..", "..kSTTTTTTTTTk..", "..kkkkkkkkkkkk..", "................"
+    "................", "................", "................", "................",
+    "................", "....k......k....", "....kS....Sk....", "....kSS..SSk....",
+    "....kkSSSSkk....", "...kSSSSSSSSk...", "...kSgSSSSgSk...", "...kSSSooSSSk...",
+    "...kSSSooSSSk...", "..kSTTTTTTTTSk..", "..kkTTTTTTTTkk..", "..kkkkkkkkkkkk.."
 };
 static const char *const R_T_FROST[16] = {
-    "................", ".......kk.......", "......kiik......", ".....kiwick.....",
-    "....kiwiccck....", "...kiwiicccck...", "...kiwiccccbk...", "....kicccbbk....",
-    ".....kcbbbk.....", "......kbbk......", ".......kk.......", "...kSSSSSSSSk...",
-    "...kSgSSSSgSk...", "..kSTTTTTTTTSk..", "..kkkkkkkkkkkk..", "................"
+    "................", "................", "................", "................",
+    "................", "....k......k....", "....kS....Sk....", "....kSS..SSk....",
+    "....kkSSSSkk....", "...kSSSSSSSSk...", "...kSgSSSSgSk...", "...kSSSccSSSk...",
+    "...kSSSccSSSk...", "..kSTTTTTTTTSk..", "..kkTTTTTTTTkk..", "..kkkkkkkkkkkk.."
+};
+static const char *const R_T_STORM[16] = {
+    "................", "................", "................", "................",
+    "................", "....k......k....", "....kS....Sk....", "....kSS..SSk....",
+    "....kkSSSSkk....", "...kSSSSSSSSk...", "...kSgSSSSgSk...", "...kSSSppSSSk...",
+    "...kSSSppSSSk...", "..kSTTTTTTTTSk..", "..kkTTTTTTTTkk..", "..kkkkkkkkkkkk.."
 };
 static const char *const R_TREE[16] = {
     "................", ".....kkkkkk.....", "...kkEEmmEEkk...", "..kEEmmmmmmEEk..",
@@ -559,6 +561,66 @@ static void make_pumpkin(Sprite *s, int face)
     s->d[2 * 16 + 10] = C_GREEN;
 }
 
+/* the boss: a giant ghost king, 32x32 (twice the size of the other monsters), drawn procedurally */
+static void make_boss(Sprite *s)
+{
+    uint8_t m[32 * 32];
+    memset(m, 0, sizeof m);
+    s->w = 32; s->h = 32;
+    memset(s->d, 255, sizeof s->d);
+    for (int y = 4; y < 31; y++)                                   /* body: a round head widening into a ragged robe */
+        for (int x = 0; x < 32; x++) {
+            float dx = (float)x + 0.5f - 16.0f, hw;
+            if (y < 14) { float t = (14.0f - (float)y) / 10.0f; hw = 11.0f * sqrtf(1.0f - t * t); }
+            else hw = 11.0f + (float)(y - 14) * 0.25f;
+            int bottom = 26 + (((x >> 2) & 1) ? 4 : 0) - (((x >> 2) % 3) == 2 ? 1 : 0);
+            if (fabsf(dx) <= hw && y <= bottom) m[y * 32 + x] = 1;
+        }
+    for (int side = 0; side < 2; side++)                           /* long reaching arms with claws */
+        for (int y = 14; y < 26; y++)
+            for (int i = 0; i < 9; i++) {
+                int x = side ? 31 - i : i;
+                int top = 14 + i / 2 + (i < 3 ? 2 : 0), bot = 17 + i / 2 + (i < 3 ? 4 : 0);
+                if (y >= top && y <= bot) m[y * 32 + x] = 1;
+                if (i < 3 && (y == 24 || y == 25) && (i & 1) == 0) m[y * 32 + x] = 1;      /* claws */
+            }
+    for (int y = 1; y < 7; y++)                                    /* crown */
+        for (int x = 9; x < 23; x++) {
+            int band = y >= 5;
+            int spike = (x == 9 || x == 10 || x == 15 || x == 16 || x == 21 || x == 22) && y >= 2 + ((x == 15 || x == 16) ? 0 : 1);
+            if (band || spike) m[y * 32 + x] = 2;
+        }
+    for (int y = 0; y < 32; y++)
+        for (int x = 0; x < 32; x++) {
+            if (!m[y * 32 + x]) continue;
+            int edge = x == 0 || x == 31 || y == 0 || y == 31 || !m[y * 32 + x - 1] || !m[y * 32 + x + 1] || !m[(y - 1) * 32 + x] || !m[(y + 1) * 32 + x];
+            int c;
+            if (m[y * 32 + x] == 2) c = edge ? C_BLACK : ((y >= 5 && ((x + y) % 5 == 0)) ? C_RED : (y >= 5 ? C_ORANGE : C_YELLOW));
+            else if (edge) c = C_BLACK;
+            else {
+                c = C_WHITE;
+                if (x >= 20 || y >= 25) c = C_LIGHT;
+                if (x >= 26 || y >= 29) c = C_GRAY;
+            }
+            s->d[y * 32 + x] = (uint8_t)c;
+        }
+    for (int e = 0; e < 2; e++) {                                  /* hollow eyes with burning red pupils */
+        int cx = e ? 21 : 11;
+        for (int y = 9; y < 17; y++)
+            for (int x = cx - 3; x <= cx + 3; x++) {
+                float ex = ((float)x - (float)cx) / 3.4f, ey = ((float)y - 12.5f) / 4.2f;
+                if (ex * ex + ey * ey <= 1.0f) s->d[y * 32 + x] = C_BLACK;
+            }
+        for (int y = 12; y < 15; y++) for (int x = cx - 1; x <= cx + 1; x++) s->d[y * 32 + x] = (uint8_t)((x == cx && y == 13) ? C_YELLOW : C_RED);
+    }
+    for (int y = 19; y < 26; y++)                                  /* a wide, jagged mouth */
+        for (int x = 11; x < 21; x++) {
+            int inset = (y == 19 || y == 25) ? 2 : ((y == 20 || y == 24) ? 1 : 0);
+            if (x >= 11 + inset && x < 21 - inset) s->d[y * 32 + x] = C_BLACK;
+        }
+    for (int x = 12; x < 20; x += 2) { s->d[20 * 32 + x] = C_WHITE; s->d[24 * 32 + x + 1] = C_WHITE; }
+}
+
 static void sprites_init(void)
 {
     if (sprites_ready) return;
@@ -567,7 +629,7 @@ static void sprites_init(void)
     make_sprite(&SPR[S_BAT0],     R_BAT0,     16, 16);
     make_sprite(&SPR[S_BAT1],     R_BAT1,     16, 16);
     make_sprite(&SPR[S_GOLEM],    R_GOLEM,    16, 16);
-    make_sprite(&SPR[S_BOSS],     R_BOSS,     16, 16);
+    make_boss(&SPR[S_BOSS]);
     make_sprite(&SPR[S_ZOMBIE],   R_ZOMBIE,   16, 16);
     make_sprite(&SPR[S_PUMPZ],    R_PUMPZ,    16, 16);
     make_sprite(&SPR[S_WITCH],    R_WITCH,    16, 16);
@@ -576,6 +638,7 @@ static void sprites_init(void)
     make_sprite(&SPR[S_T_ARROW],  R_T_ARROW,  16, 16);
     make_sprite(&SPR[S_T_CANNON], R_T_CANNON, 16, 16);
     make_sprite(&SPR[S_T_FROST],  R_T_FROST,  16, 16);
+    make_sprite(&SPR[S_T_STORM],  R_T_STORM,  16, 16);
     make_sprite(&SPR[S_TREE],     R_TREE,     16, 16);
     make_sprite(&SPR[S_ROCK],     R_ROCK,     16, 16);
     make_sprite(&SPR[S_PORTAL],   R_PORTAL,   16, 16);
@@ -1249,6 +1312,10 @@ static void update_weather(Game *g, float dt)
     if (g->level == 0) return;
     g->strike_t += dt;
     if (g->strike_t > 30.0f) g->strike_t = 30.0f;
+    if (g->thunder_pending) {
+        g->thunder_t -= dt;
+        if (g->thunder_t <= 0) { g->thunder_pending = 0; sfx(g, SFX_THUNDER); }
+    }
     g->bolt_cd -= dt;
     if (g->bolt_cd > 0) return;
 
@@ -1270,6 +1337,8 @@ static void update_weather(Game *g, float dt)
             add_ring(g, (float)g->bolt_x1, (float)g->bolt_y1, 13, 0.3f, C_CYAN);
         }
     }
+    g->thunder_t = 0.15f + wrndf(g) * 0.45f;               /* the rumble follows the flash by a moment */
+    g->thunder_pending = 1;
     g->bolt_cd = 3.5f + wrndf(g) * 6.0f;
 }
 
@@ -1436,16 +1505,12 @@ static void kill_enemy(Game *g, Enemy *e)
     int gold = EN_DEF[e->type].gold;
     g->gold += gold; g->kills++;
     add_text(g, e->x, e->y - 8, gold);
-    burst(g, e->x, e->y, e->type == EN_BOSS ? 130 : 34, c1[e->type], c2[e->type],
-          e->type == EN_BOSS ? 150 : 95, 0.65f);
-    burst(g, e->x, e->y, e->type == EN_BOSS ? 40 : 8, C_WHITE, C_YELLOW, 140, 0.35f);
-    add_ring(g, e->x, e->y, e->type == EN_BOSS ? 20 : 11, 0.25f, c1[e->type]);
-    if (g->shake_t < 0.08f) g->shake_t = 0.08f;
+    burst(g, e->x, e->y, e->type == EN_BOSS ? 60 : 8, c1[e->type], c2[e->type],
+          e->type == EN_BOSS ? 110 : 55, 0.5f);
     if (e->type == EN_BOSS) {
-        add_ring(g, e->x, e->y, 46, 0.6f, C_ORANGE);
-        add_ring(g, e->x, e->y, 30, 0.45f, C_RED);
-        add_ring(g, e->x, e->y, 22, 0.35f, C_YELLOW);
-        g->shake_t = 0.9f;
+        add_ring(g, e->x, e->y, 40, 0.5f, C_CYAN);
+        add_ring(g, e->x, e->y, 24, 0.35f, C_WHITE);
+        g->shake_t = 0.5f;
         sfx(g, SFX_EXPLODE);
     } else {
         sfx(g, SFX_KILL);
@@ -1462,7 +1527,6 @@ static void hurt_enemy(Game *g, Enemy *e, float dmg)
 {
     e->hp -= dmg;
     e->hitflash = 0.07f;
-    burst(g, e->x, e->y, 4, C_WHITE, C_YELLOW, 80, 0.2f);
     if (e->hp <= 0) kill_enemy(g, e);
 }
 
@@ -1512,7 +1576,7 @@ static void update_enemies(Game *g, float dt)
                 g->lives -= EN_DEF[e->type].leak;
                 g->hurt_t = 0.45f;
                 g->shake_t = EN_DEF[e->type].leak >= 10 ? 0.6f : 0.25f;
-                burst(g, 304, e->y, 40, C_RED, C_ORANGE, 120, 0.6f);
+                burst(g, 304, e->y, 14, C_RED, C_ORANGE, 75, 0.5f);
                 add_ring(g, 304, e->y, 16, 0.3f, C_RED);
                 sfx(g, SFX_LEAK);
                 if (g->lives <= 0) {
@@ -1529,8 +1593,44 @@ static void update_enemies(Game *g, float dt)
     }
 }
 
+static void add_arc(Game *g, float x0, float y0, float x1, float y1)
+{
+    for (int i = 0; i < MAX_ARC; i++)
+        if (g->ar[i].life <= 0) { g->ar[i] = (Arc){x0, y0, x1, y1, 0.13f, (uint8_t)(rnd(g) & 255)}; return; }
+}
+
+/* the storm orb: a bolt of lightning that jumps from monster to monster, weaker with each jump */
+static void storm_strike(Game *g, int tx, int ty, Tower *t, int ei)
+{
+    float x, y; tile_center(tx, ty, &x, &y); y -= 3.0f;
+    int chain = STORM_CHAIN[t->level], cur = ei;
+    float dmg = TW_DMG[TW_STORM][t->level], cx = x, cy = y;
+    uint8_t hit[MAX_ENEMIES];
+    memset(hit, 0, sizeof hit);
+    for (int k = 0; k < chain && cur >= 0; k++) {
+        Enemy *e = &g->en[cur];
+        hit[cur] = 1;
+        float ex = e->x, ey = e->y - 2.0f;
+        add_arc(g, cx, cy, ex, ey);
+        add_part(g, ex, ey, 0, -10, 0.15f, C_WHITE, 1);
+        hurt_enemy(g, e, dmg * (1.0f - 0.2f * (float)k));
+        cx = ex; cy = ey;
+        int nxt = -1; float bd = 30.0f * 30.0f;
+        for (int j = 0; j < MAX_ENEMIES; j++) {
+            const Enemy *o = &g->en[j];
+            if (!o->alive || hit[j]) continue;
+            float dx = o->x - ex, dy = o->y - ey, d2 = dx * dx + dy * dy;
+            if (d2 < bd) { bd = d2; nxt = j; }
+        }
+        cur = nxt;
+    }
+    t->flash = 0.07f;
+    sfx(g, SFX_ZAP);
+}
+
 static void fire(Game *g, int tx, int ty, Tower *t, int ei)
 {
+    if (t->type == TW_STORM) { storm_strike(g, tx, ty, t, ei); return; }
     for (int i = 0; i < MAX_PROJ; i++)
         if (!g->pr[i].alive) {
             Proj *p = &g->pr[i];
@@ -1543,18 +1643,13 @@ static void fire(Game *g, int tx, int ty, Tower *t, int ei)
             p->dmg = TW_DMG[t->type][t->level];
             t->flash = 0.07f;
             if (t->type == TW_CANNON) {
-                burst(g, p->x, p->y - 4, 18, C_ORANGE, C_YELLOW, 80, 0.4f);
-                burst(g, p->x, p->y - 4, 10, C_LIGHT, C_GRAY, 40, 0.5f);
-                add_ring(g, p->x, p->y - 4, 13, 0.2f, C_YELLOW);
-                if (g->shake_t < 0.07f) g->shake_t = 0.07f;
+                burst(g, p->x, p->y - 4, 5, C_LIGHT, C_GRAY, 35, 0.3f);
                 sfx(g, SFX_CANNON);
             } else if (t->type == TW_FROST) {
-                burst(g, p->x, p->y - 2, 12, C_ICE, C_CYAN, 65, 0.35f);
-                add_ring(g, p->x, p->y - 2, 10, 0.25f, C_CYAN);
+                add_part(g, p->x, p->y - 2, 0, -12, 0.15f, C_ICE, 1);
                 sfx(g, SFX_FROST);
             } else {
-                burst(g, p->x, p->y - 2, 7, C_WHITE, C_YELLOW, 70, 0.25f);
-                add_ring(g, p->x, p->y - 2, 7, 0.15f, C_YELLOW);
+                add_part(g, p->x, p->y - 2, 0, -12, 0.15f, C_WHITE, 1);
                 sfx(g, SFX_ARROW);
             }
             return;
@@ -1594,9 +1689,8 @@ static void hit_projectile(Game *g, Proj *p)
     if (p->type == TW_ARROW) {
         if (tg) {
             hurt_enemy(g, tg, p->dmg);
-            burst(g, p->x, p->y, 14, C_WHITE, C_YELLOW, 110, 0.3f);
-            burst(g, p->x, p->y, 6, C_ORANGE, C_TAN, 60, 0.4f);
-            add_ring(g, p->x, p->y, 9, 0.18f, C_WHITE);
+            add_part(g, p->x, p->y, -p->vx * 0.2f, -p->vy * 0.2f - 10, 0.2f, C_WHITE, 1);
+            add_part(g, p->x, p->y, p->vy * 0.2f, -p->vx * 0.2f - 10, 0.2f, C_TAN, 1);
         }
     } else if (p->type == TW_CANNON) {
         float r = TW_SPLASH[TW_CANNON][p->level];
@@ -1606,13 +1700,10 @@ static void hit_projectile(Game *g, Proj *p)
             float dx = e->x - p->x, dy = e->y - p->y;
             if (dx * dx + dy * dy <= r * r) hurt_enemy(g, e, p->dmg);
         }
-        burst(g, p->x, p->y, 44, C_ORANGE, C_YELLOW, 130, 0.55f);
-        burst(g, p->x, p->y, 18, C_RED, C_WHITE, 170, 0.4f);
-        burst(g, p->x, p->y, 18, C_DKSTONE, C_GRAY, 60, 0.7f);
-        add_ring(g, p->x, p->y, r + 4, 0.32f, C_ORANGE);
-        add_ring(g, p->x, p->y, r * 0.6f, 0.22f, C_YELLOW);
-        add_ring(g, p->x, p->y, r + 12, 0.45f, C_RED);
-        if (g->shake_t < (p->level == 2 ? 0.4f : 0.2f)) g->shake_t = (p->level == 2 ? 0.4f : 0.2f);
+        burst(g, p->x, p->y, 12, C_ORANGE, C_YELLOW, 70, 0.4f);
+        burst(g, p->x, p->y, 5, C_DKSTONE, C_GRAY, 35, 0.5f);
+        add_ring(g, p->x, p->y, r + 3, 0.26f, C_ORANGE);
+        if (p->level == 2 && g->shake_t < 0.1f) g->shake_t = 0.1f;
         sfx(g, SFX_EXPLODE);
     } else {
         float r = TW_SPLASH[TW_FROST][p->level];
@@ -1626,10 +1717,8 @@ static void hit_projectile(Game *g, Proj *p)
             }
         }
         if (tg) hurt_enemy(g, tg, p->dmg);
-        burst(g, p->x, p->y, 30, C_ICE, C_CYAN, 105, 0.5f);
-        burst(g, p->x, p->y, 12, C_WHITE, C_ICE, 150, 0.35f);
-        add_ring(g, p->x, p->y, r, 0.34f, C_ICE);
-        add_ring(g, p->x, p->y, r * 0.55f, 0.22f, C_WHITE);
+        burst(g, p->x, p->y, 8, C_ICE, C_CYAN, 50, 0.35f);
+        add_ring(g, p->x, p->y, r, 0.28f, C_ICE);
     }
     p->alive = 0;
 }
@@ -1652,11 +1741,9 @@ static void update_projectiles(Game *g, float dt)
             p->vy = dy / d * PROJ_SPEED[p->type];
             p->x += p->vx * dt; p->y += p->vy * dt;
             /* trails */
-            for (int k = 0; k < 2; k++) {
-                float jx = (rndf(g) - 0.5f) * 40.0f, jy = (rndf(g) - 0.5f) * 40.0f;
-                if (p->type == TW_CANNON) add_part(g, p->x, p->y, jx, jy - 8, 0.3f, k ? C_ORANGE : (rnd(g) & 1 ? C_YELLOW : C_GRAY), 1 + (int)(rnd(g) & 1));
-                else if (p->type == TW_FROST) add_part(g, p->x, p->y, jx, jy, 0.35f, (rnd(g) & 1) ? C_CYAN : (k ? C_WHITE : C_ICE), 1);
-                else add_part(g, p->x, p->y, jx * 0.6f, jy * 0.6f, 0.18f, k ? C_YELLOW : C_WHITE, 1);
+            if (g->frame & 1) {
+                if (p->type == TW_CANNON) add_part(g, p->x, p->y, 0, -8, 0.2f, C_GRAY, 1);
+                else if (p->type == TW_FROST) add_part(g, p->x, p->y, 0, 0, 0.18f, (g->frame & 2) ? C_CYAN : C_ICE, 1);
             }
         }
     }
@@ -1677,6 +1764,7 @@ static void update_fx(Game *g, float dt)
         t->life -= dt; t->y -= 18.0f * dt;
     }
     for (int i = 0; i < MAX_RING; i++) if (g->rg[i].life > 0) g->rg[i].life -= dt;
+    for (int i = 0; i < MAX_ARC; i++) if (g->ar[i].life > 0) g->ar[i].life -= dt;
     if (g->msg_t > 0)    g->msg_t -= dt;
     if (g->banner_t > 0) g->banner_t -= dt;
     if (g->hurt_t > 0)   g->hurt_t -= dt;
@@ -1791,6 +1879,18 @@ static void move_cursor(Game *g, uint32_t held, uint32_t pressed)
 void game_update(Game *g, uint32_t held, uint32_t pressed, float dt)
 {
     g->frame++;
+    if (g->state != ST_TITLE) {                      /* right stick: zoom in/out, centred on the cursor */
+        if ((pressed & BTN_ZIN) && g->zoom_lvl < 2) { g->zoom_lvl++; sfx(g, SFX_MOVE); }
+        if ((pressed & BTN_ZOUT) && g->zoom_lvl > 0) { g->zoom_lvl--; sfx(g, SFX_MOVE); }
+    }
+    {
+        float target = 1.0f + (float)g->zoom_lvl, k = dt * 9.0f > 1.0f ? 1.0f : dt * 9.0f;
+        if (g->zoom < 1.0f) g->zoom = 1.0f;
+        g->zoom += (target - g->zoom) * k;
+        float fx = (float)(g->cx * TILE + 8), fy = (float)(g->cy * TILE + 8);
+        if (g->zfx <= 0) { g->zfx = fx; g->zfy = fy; }
+        g->zfx += (fx - g->zfx) * k; g->zfy += (fy - g->zfy) * k;
+    }
     for (int i = 0; i < SFX_COUNT; i++) if (g->sfx_cd[i] > 0) g->sfx_cd[i] -= dt;
     update_weather(g, dt);
     if (g->fade > 0) g->fade -= dt * 2.2f;
@@ -1870,6 +1970,58 @@ static int ambient_at(const Game *g, int x, int y)
     return g->bg[y * SCREEN_W + x] & 0xE0;
 }
 
+/* ---- the magical weapons: a floating orb above each pedestal, with orbiting motes and a gentle pulse ---- */
+static void orb_px(uint8_t *fb, int x, int y, int c, int sc, int dim)
+{
+    if (dim) c = (c == C_WHITE || c == C_LIGHT || c == C_ICE || c == C_PINK) ? C_GRAY : C_DKGRAY;
+    else if (c < 32) c += blit_add;
+    if (sc == 1) px(fb, x, y, c); else rect(fb, x, y, sc, sc, c);
+}
+
+/* cx,cy: centre of the orb's resting spot in screen pixels; sc: pixel size (the title screen draws it big) */
+static void draw_orb(uint8_t *fb, int type, int level, int cx, int cy, int frame, int seed, int sc, int dim)
+{
+    static const uint8_t pal[TW_COUNT][3] = {
+        {C_DKGREEN, C_GREEN, C_LTGREEN}, {C_RED, C_ORANGE, C_YELLOW},
+        {C_BLUE, C_CYAN, C_ICE}, {C_DKPURPLE, C_PURPLE, C_PINK}
+    };
+    float ph = (float)seed * 1.7f;
+    cy += (int)lrintf(sinf((float)frame * 0.07f + ph) * 1.3f) * sc;          /* the orb bobs up and down */
+    int r = level == 2 ? 4 : 3;
+    const uint8_t *c = pal[type];
+    int pulse = ((frame / 7 + seed) % 5) == 0;
+    for (int dy = -r; dy <= r; dy++)
+        for (int dx = -r; dx <= r; dx++) {
+            int d2 = dx * dx + dy * dy, in;
+            if (type == TW_FROST) { in = abs(dx) + abs(dy) <= r + 1; if (!in) continue; d2 = (abs(dx) + abs(dy)) * (abs(dx) + abs(dy)); if (d2 >= (r + 1) * (r + 1)) d2 = r * r + r; }
+            else if (d2 > r * r + 1) continue;
+            int col = d2 >= r * r - 1 ? c[0] : (d2 >= r + 1 ? c[1] : (pulse ? C_WHITE : c[2]));
+            if (dx <= -1 && dy <= -1 && d2 > 1 && d2 < r * r - 1) col = C_WHITE;           /* shine */
+            orb_px(fb, cx + dx * sc, cy + dy * sc, col, sc, dim);
+        }
+    if (dim) return;
+    uint32_t h = hash2(seed, frame / 3, type);
+    if (type == TW_CANNON) {                                    /* flickering flame tips */
+        orb_px(fb, cx + ((int)(h % 3) - 1) * sc, cy - (r + 1) * sc, (h & 8) ? C_YELLOW : C_ORANGE, sc, 0);
+        if (h & 16) orb_px(fb, cx + ((int)((h >> 5) % 5) - 2) * sc, cy - (r + 2) * sc, C_ORANGE, sc, 0);
+    } else if (type == TW_STORM) {                              /* little crackles of lightning */
+        if ((h & 3) != 0) {
+            int dxs = (int)((h >> 3) % 3) - 1, dys = (int)((h >> 6) % 3) - 1;
+            if (dxs == 0 && dys == 0) dxs = 1;
+            orb_px(fb, cx + dxs * (r + 1) * sc, cy + dys * (r + 1) * sc, (h & 4) ? C_WHITE : C_CYAN, sc, 0);
+            orb_px(fb, cx + dxs * (r + 2) * sc, cy + dys * (r + 2) * sc, C_PINK, sc, 0);
+        }
+    } else if (type == TW_FROST && (h % 7) == 0) {              /* a falling snowflake */
+        orb_px(fb, cx + ((int)((h >> 4) % 7) - 3) * sc, cy + (r + 2) * sc, C_WHITE, sc, 0);
+    }
+    int n = 1 + level;                                          /* orbiting motes */
+    for (int k = 0; k < n; k++) {
+        float a = (float)frame * 0.09f * (1.0f + 0.35f * (float)k) + (float)k * 6.2832f / (float)n + ph;
+        int mx = cx + (int)lrintf(cosf(a) * (float)(r + 3)) * sc, my = cy + (int)lrintf(sinf(a) * (float)(r + 3) * 0.45f) * sc;
+        orb_px(fb, mx, my, k & 1 ? c[2] : C_WHITE, sc, 0);
+    }
+}
+
 static void draw_tower(uint8_t *fb, const Game *g, const Tower *t, int tx, int ty)
 {
     int x = tx * TILE, y = MAP_Y + ty * TILE;
@@ -1878,6 +2030,7 @@ static void draw_tower(uint8_t *fb, const Game *g, const Tower *t, int tx, int t
     for (int j = 9; j < 16; j++) { shadow_px(fb, x + 14, y + j); shadow_px(fb, x + 15, y + j); }
     blit_add = ambient_at(g, x + 8, y + 12);
     blit(fb, &SPR[tower_sprite(t->type)], x, y, t->level == 0 ? M_NORMAL : (t->level == 1 ? M_TIER2 : M_TIER3));
+    draw_orb(fb, t->type, t->level, x + 8, y + 5, (int)g->frame, tx * 7 + ty * 3, 1, 0);
     blit_add = 0;
     int n = t->level + 1, start = 8 - (n * 3 - 1) / 2;
     for (int i = 0; i < n; i++) {
@@ -1885,8 +2038,8 @@ static void draw_tower(uint8_t *fb, const Game *g, const Tower *t, int tx, int t
         px(fb, x + start + i * 3, y + 15, C_ORANGE); px(fb, x + start + i * 3 + 1, y + 15, C_ORANGE);
     }
     if (t->flash > 0) {                                  /* muzzle flash */
-        int mx = x + 8, my = y + (t->type == TW_FROST ? 2 : 1);
-        int c = t->type == TW_FROST ? C_ICE : (t->type == TW_CANNON ? C_ORANGE : C_YELLOW);
+        int mx = x + 8, my = y + 1;
+        int c = t->type == TW_FROST ? C_ICE : (t->type == TW_CANNON ? C_ORANGE : (t->type == TW_STORM ? C_PINK : C_LTGREEN));
         px(fb, mx, my, C_WHITE); px(fb, mx - 1, my, c); px(fb, mx + 1, my, c);
         px(fb, mx, my - 1, c); px(fb, mx, my + 1, c);
     }
@@ -1918,22 +2071,27 @@ static void draw_enemy(uint8_t *fb, const Game *g, const Enemy *e)
     if (e->slow_t > 0) mode = M_FROZEN;
     if (e->hitflash > 0) mode = M_FLASH;
     else if (e->type == EN_GHOST && ((g->frame / 5 + e->uid) % 4) == 0) mode = M_GHOST;     /* flickers in and out */
-    int x = (int)lrintf(e->x) - 8, y = (int)lrintf(e->y) - 8 + bob;
+    int bw = SPR[spr].w, bh = SPR[spr].h;
+    int x = (int)lrintf(e->x) - bw / 2, y = (int)lrintf(e->y) - 8 - (bh - 16) + 2 * (bh > 16) + bob;
     if (is_flyer(e->type)) y -= 3;
     /* soft shadow (smaller and lighter for flyers, which hover above the ground) */
     int sy = (int)lrintf(e->y) + 5;
-    shadow_ellipse(fb, (int)lrintf(e->x), sy + (is_flyer(e->type) ? 3 : 0), e->type == EN_BOSS ? 7 : (is_flyer(e->type) ? 3 : 5));
-    blit_add = ambient_at(g, x + 8, y + 12);
+    shadow_ellipse(fb, (int)lrintf(e->x), sy + (is_flyer(e->type) ? 3 : 0), e->type == EN_BOSS ? 12 : (is_flyer(e->type) ? 3 : 5));
+    blit_add = ambient_at(g, x + bw / 2, y + bh * 3 / 4);
     blit(fb, &SPR[spr], x, y, mode);
     blit_add = 0;
     if (e->hp < e->maxhp) {
-        int w = e->type == EN_BOSS ? 16 : 10, bx = (int)lrintf(e->x) - w / 2, by = y - 2;
+        int w = e->type == EN_BOSS ? 26 : 10, bx = (int)lrintf(e->x) - w / 2, by = y - 2;
         int fillw = (int)(w * e->hp / e->maxhp + 0.5f);
         if (fillw < 1) fillw = 1;
         rect(fb, bx - 1, by - 1, w + 2, 3, C_BLACK);
         rect(fb, bx, by, w, 1, C_DKRED);
         float f = e->hp / e->maxhp;
         rect(fb, bx, by, fillw, 1, f > 0.5f ? C_GREEN : (f > 0.25f ? C_YELLOW : C_RED));
+    }
+    if (e->type == EN_BOSS && mode != M_FLASH) {                  /* the eyes burn: pulse between red and yellow */
+        int ec = ((g->frame / 8) & 1) ? C_YELLOW : C_ORANGE;
+        px(fb, x + 11, y + 13, ec); px(fb, x + 21, y + 13, ec);
     }
 }
 
@@ -1972,7 +2130,7 @@ static void tower_info_text(const Game *g, char *buf, size_t n)
     } else if (!game_is_buildable(g, g->cx, g->cy)) {
         snprintf(buf, n, "CAN'T BUILD HERE");
     } else {
-        snprintf(buf, n, "A:BUILD %s %dG%s  L/R:CHANGE", TW_NAME[g->sel], TW_COST[g->sel],
+        snprintf(buf, n, "A:BUILD %s %dG%s", TW_NAME[g->sel], TW_COST[g->sel],
                  g->sel == TW_CANNON ? " (GROUND ONLY)" : "");
     }
 }
@@ -2006,14 +2164,16 @@ static void draw_hud(uint8_t *fb, const Game *g)
         snprintf(b, sizeof b, "ENEMIES %d", left);
         draw_text(fb, 130 + ox, 4, b, C_ORANGE, 1);
     }
-    if (g->fast) draw_text(fb, 232 + ox, 4, ">>", C_YELLOW, 1);
+    if (g->fast) draw_text(fb, 228 + ox, 4, ">>", C_YELLOW, 1);
     /* context line */
     tower_info_text(g, b, sizeof b);
     draw_text(fb, 4, 12, b, g->msg_t > 0 ? C_ORANGE : C_LIGHT, 1);
     /* tower selector */
     for (int i = 0; i < TW_COUNT; i++) {
-        int x = 264 + i * 18;
-        blit(fb, &SPR[tower_sprite(i)], x, 2, g->gold >= TW_COST[i] ? M_NORMAL : M_DIM);
+        int x = 251 + i * 17;
+        int afford = g->gold >= TW_COST[i];
+        blit(fb, &SPR[tower_sprite(i)], x, 2, afford ? M_NORMAL : M_DIM);
+        draw_orb(fb, i, 0, x + 8, 7, (int)g->frame, i, 1, afford ? 0 : 1);
         if (i == g->sel) {
             frame_rect(fb, x - 1, 1, 18, 17, C_YELLOW);
             if (g->frame & 16) frame_rect(fb, x - 2, 0, 20, 19, C_ORANGE);
@@ -2086,7 +2246,7 @@ static void draw_glows(uint8_t *fb, const Game *g)
         for (int tx = 0; tx < MAP_W; tx++) {
             const Tower *t = &g->towers[ty][tx];
             if (t->used && t->flash > 0)
-                gl(fb, tx * TILE + 8, MAP_Y + ty * TILE + (t->type == TW_FROST ? 3 : 2), 10, t->type == TW_FROST ? 2 : 1, &budget);
+                gl(fb, tx * TILE + 8, MAP_Y + ty * TILE + 4, 9, (t->type == TW_FROST || t->type == TW_STORM) ? 2 : 1, &budget);
         }
     for (int i = 0; i < MAX_PROJ; i++) {
         const Proj *p = &g->pr[i];
@@ -2095,7 +2255,7 @@ static void draw_glows(uint8_t *fb, const Game *g)
     for (int i = 0; i < MAX_ENEMIES; i++) {
         const Enemy *e = &g->en[i];
         if (!e->alive) continue;
-        if (e->type == EN_BOSS) gl(fb, (int)e->x, (int)e->y, 14, 1, &budget);
+        if (e->type == EN_BOSS) gl(fb, (int)e->x, (int)e->y - 6, 22, 2, &budget);
         else if (e->type == EN_WITCH || e->type == EN_CAT) gl(fb, (int)e->x, (int)e->y, 11, 2, &budget);
         else if (e->type == EN_GHOST) gl(fb, (int)e->x, (int)e->y, 12, 2, &budget);
         else if (e->type == EN_PUMPKIN) gl(fb, (int)e->x, (int)e->y, 9, 1, &budget);
@@ -2299,6 +2459,23 @@ static void draw_scenery(uint8_t *fb, const Game *g)
         }
 }
 
+static void draw_arcs(uint8_t *fb, const Game *g)
+{
+    for (int i = 0; i < MAX_ARC; i++) {
+        const Arc *a = &g->ar[i];
+        if (a->life <= 0) continue;
+        int n = 5;
+        float px0 = a->x0, py0 = a->y0, dx = a->x1 - a->x0, dy = a->y1 - a->y0, len = sqrtf(dx * dx + dy * dy) + 0.01f;
+        for (int k = 1; k <= n; k++) {
+            float t = (float)k / (float)n, off = k == n ? 0.0f : ((float)(hash2(a->seed, (int)(g->frame / 2), k) % 7) - 3.0f);
+            float x1 = a->x0 + dx * t - dy / len * off, y1 = a->y0 + dy * t + dx / len * off;
+            bolt_line(fb, (int)px0, (int)py0 + 1, (int)x1, (int)y1 + 1, C_PURPLE);
+            bolt_line(fb, (int)px0, (int)py0, (int)x1, (int)y1, C_WHITE);
+            px0 = x1; py0 = y1;
+        }
+    }
+}
+
 static void draw_world(uint8_t *fb, const Game *g)
 {
     memcpy(fb + MAP_Y * SCREEN_W, g->bg, sizeof g->bg);
@@ -2317,6 +2494,7 @@ static void draw_world(uint8_t *fb, const Game *g)
         ring_outline(fb, (int)r->x, (int)r->y, r->maxr * (0.25f + 0.75f * sqrtf(t)), t > 0.6f ? DARK[r->col] : r->col);
     }
     for (int i = 0; i < MAX_PROJ; i++) if (g->pr[i].alive) draw_projectile(fb, &g->pr[i]);
+    draw_arcs(fb, g);
     if (g->level > 0) { draw_glows(fb, g); draw_bolt(fb, g); }
     for (int i = 0; i < MAX_PART; i++) {
         const Part *p = &g->pt[i];
@@ -2328,6 +2506,32 @@ static void draw_world(uint8_t *fb, const Game *g)
         if (t->life <= 0) continue;
         char b[16]; snprintf(b, sizeof b, "+%d", t->val);
         draw_text_sh(fb, (int)t->x - text_w(b, 1) / 2, (int)t->y, b, C_YELLOW, 1);
+    }
+}
+
+/* zoom: magnify the map around the point the view is following (nearest-neighbour, so pixels stay crisp) */
+static void zoom_map(uint8_t *fb, const Game *g)
+{
+    static uint8_t tmp[SCREEN_W * MAP_H * TILE];
+    float z = g->zoom;
+    if (z < 1.02f) return;
+    memcpy(tmp, fb + MAP_Y * SCREEN_W, sizeof tmp);
+    float ww = (float)SCREEN_W / z, wh = (float)(MAP_H * TILE) / z;
+    float wx = g->zfx - ww * 0.5f, wy = g->zfy - wh * 0.5f;
+    if (wx < 0) wx = 0;
+    if (wy < 0) wy = 0;
+    if (wx > (float)SCREEN_W - ww) wx = (float)SCREEN_W - ww;
+    if (wy > (float)(MAP_H * TILE) - wh) wy = (float)(MAP_H * TILE) - wh;
+    for (int y = 0; y < MAP_H * TILE; y++) {
+        int sy = (int)(wy + (float)y / z);
+        if (sy > MAP_H * TILE - 1) sy = MAP_H * TILE - 1;
+        uint8_t *d = fb + (MAP_Y + y) * SCREEN_W;
+        const uint8_t *r = tmp + sy * SCREEN_W;
+        for (int x = 0; x < SCREEN_W; x++) {
+            int sx = (int)(wx + (float)x / z);
+            if (sx > SCREEN_W - 1) sx = SCREEN_W - 1;
+            d[x] = r[sx];
+        }
     }
 }
 
@@ -2368,7 +2572,8 @@ static void draw_title(uint8_t *fb, const Game *g)
     draw_text_center(fb, 74, "ENDLESS WAVES - HOW FAR CAN YOU GO?", C_LIGHT, 1);
     /* mascots: a tower on the left, the boss on the right */
     blit_scaled(fb, &SPR[S_T_ARROW], 36, 20, 3);
-    blit_scaled(fb, &SPR[S_BOSS], 236, 20 + (int)((g->frame >> 4) & 1), 3);
+    draw_orb(fb, TW_STORM, 2, 36 + 24, 20 + 15, (int)g->frame, 3, 3, 0);
+    blit(fb, &SPR[S_BOSS], 248, 28 + (int)lrintf(sinf((float)g->frame * 0.06f) * 2.0f), M_NORMAL);
 
     panel(fb, 28, 98, 264, 80, C_GRAY);
     draw_text_center(fb, 106, "PRESS A TO START", ((g->frame >> 4) & 1) ? C_WHITE : C_YELLOW, 2);
@@ -2395,8 +2600,9 @@ void game_render(const Game *g, uint8_t *fb)
 
     draw_world(fb, g);
     if (g->state == ST_PLAY || g->state == ST_PAUSE) draw_cursor(fb, g);
+    if (g->state != ST_TITLE) zoom_map(fb, g);
     if (g->shake_t > 0) {
-        int amp = g->shake_t > 0.5f ? 4 : (g->shake_t > 0.25f ? 3 : (g->shake_t > 0.1f ? 2 : 1));
+        int amp = g->shake_t > 0.25f ? 2 : 1;
         int dx = (int)(hash2((int)g->frame, 1, 7) % (uint32_t)(2 * amp + 1)) - amp;
         int dy = (int)(hash2((int)g->frame, 2, 9) % (uint32_t)(2 * amp + 1)) - amp;
         shake_map(fb, dx, dy);
