@@ -333,6 +333,22 @@ levels:
         g.strike_t = 0.02f; game_render(&g, fb); snprintf(name, sizeof name, "L%d_bolt", lv + 1); dump(&g, fb, name);
         g.strike_t = 0.30f; game_render(&g, fb); snprintf(name, sizeof name, "L%d_afterflash", lv + 1); dump(&g, fb, name);
     }
+    /* living scenery: trees sway, flames flicker, wind drifts over the grass */
+    {
+        static uint8_t a[SCREEN_W * SCREEN_H], b[SCREEN_W * SCREEN_H];
+        game_start_level(&g, 0);
+        int tree_changes = 0, grass_changes = 0;
+        game_render(&g, a);
+        for (int i = 0; i < 40; i++) {
+            for (int k = 0; k < 6; k++) frame(&g, 0, 0);
+            game_render(&g, b);
+            for (int y = 20; y < 36; y++) for (int x = 0; x < 16; x++) tree_changes += a[y * SCREEN_W + x] != b[y * SCREEN_W + x];   /* tree tile 0,0 */
+            for (int y = 100; y < 116; y++) for (int x = 150; x < 210; x++) grass_changes += a[y * SCREEN_W + x] != b[y * SCREEN_W + x];
+            memcpy(a, b, sizeof a);
+        }
+        CHECK(tree_changes > 40, "level 1: the tree in the corner sways");
+        CHECK(grass_changes > 20, "level 1: wind shimmers over the grass");
+    }
     /* storm title preview with the level picker */
     game_start_level(&g, 0); game_init(&g);                    /* the title remembers the last level: reset it to 1 */
     frame(&g, BTN_RIGHT, BTN_RIGHT);

@@ -341,7 +341,7 @@ static void draw_text_center(uint8_t *fb, int y, const char *t, int col, int s)
 /* ------------------------------------------------------------------ */
 typedef struct { int w, h; uint8_t d[256]; } Sprite;
 enum { S_SLIME, S_BAT0, S_BAT1, S_GOLEM, S_BOSS, S_T_ARROW, S_T_CANNON, S_T_FROST,
-       S_TREE, S_ROCK, S_PORTAL, S_HEART, S_COIN, S_DEAD, S_GRAVE, S_LAMP, S_COUNT };
+       S_TREE, S_ROCK, S_PORTAL, S_HEART, S_COIN, S_DEAD, S_GRAVE, S_LAMP, S_SKEL0, S_SKEL1, S_PUMP0, S_PUMP1, S_PUMP2, S_COUNT };
 static Sprite SPR[S_COUNT];
 static int sprites_ready;
 
@@ -429,6 +429,12 @@ static const char *const R_LAMP[16] = {
     "......kddk......", "......kddk......", "......kddk......", "......kddk......",
     ".....kddddk.....", ".....kkkkkk.....", "................", "................"
 };
+static const char *const R_SKEL[16] = {
+    "................", ".....kkkkkk.....", "....kwwwwwwk....", "....kwkwwkwk....",
+    "....kwkwwkwk....", ".....kwwwwk.....", ".....kwkwkk.....", "......kkkk......",
+    "...kk.kllk.kk...", "...kwkkllkkwk...", "...kwkllllkwk...", "...kwkkllkkwk...",
+    "....k.kllk.k....", ".....kkllkk.....", ".....kl.kl......", "....kkk.kkk....."
+};
 static const char *const R_HEART[6] = {
     ".rr.rr.", "rrrrrrr", "rrrrrrr", ".rrrrr.", "..rrr..", "...r..."
 };
@@ -466,6 +472,43 @@ static void make_sprite(Sprite *s, const char *const *rows, int w, int h)
     }
 }
 
+/* jack-o'-lantern: three flicker frames differ only in the colour of the carved face */
+static void make_pumpkin(Sprite *s, int face)
+{
+    static const uint8_t faces[3] = {C_YELLOW, C_ORANGE, C_WHITE};
+    int fc = faces[face];
+    s->w = 16; s->h = 16;
+    memset(s->d, 255, sizeof s->d);
+    for (int y = 3; y < 15; y++)
+        for (int x = 1; x < 15; x++) {
+            float dx = ((float)x - 7.5f) / 6.9f, dy = ((float)y - 9.0f) / 5.7f;
+            if (dx * dx + dy * dy <= 1.0f) {
+                int c = C_ORANGE;
+                if (x == 4 || x == 11 || x == 7 || x == 8) c = C_BROWN;          /* ribs */
+                if (dx > 0.45f && dy > -0.2f) c = (c == C_BROWN) ? C_DKBROWN : C_BROWN;   /* shaded side */
+                s->d[y * 16 + x] = (uint8_t)c;
+            }
+        }
+    for (int y = 3; y < 15; y++)                                   /* outline */
+        for (int x = 1; x < 15; x++) {
+            if (s->d[y * 16 + x] == 255) continue;
+            int edge = x == 1 || x == 14 || y == 3 || y == 14 ||
+                       s->d[y * 16 + x - 1] == 255 || s->d[y * 16 + x + 1] == 255 ||
+                       s->d[(y - 1) * 16 + x] == 255 || s->d[(y + 1) * 16 + x] == 255;
+            if (edge) s->d[y * 16 + x] = C_BLACK;
+        }
+    static const int8_t face_px[][2] = {                           /* eyes, nose, zig-zag grin */
+        {4, 8}, {5, 8}, {6, 8}, {5, 7}, {9, 8}, {10, 8}, {11, 8}, {10, 7}, {7, 9}, {8, 9},
+        {4, 11}, {5, 12}, {6, 11}, {7, 12}, {8, 12}, {9, 11}, {10, 12}, {11, 11}
+    };
+    for (unsigned i = 0; i < sizeof face_px / sizeof face_px[0]; i++) s->d[face_px[i][1] * 16 + face_px[i][0]] = (uint8_t)fc;
+    s->d[5 * 16 + 4] = C_YELLOW; s->d[5 * 16 + 5] = C_YELLOW;     /* highlight */
+    s->d[1 * 16 + 7] = C_DKBROWN; s->d[1 * 16 + 8] = C_DKBROWN;   /* stem + leaf */
+    s->d[2 * 16 + 7] = C_DKBROWN; s->d[2 * 16 + 8] = C_DKBROWN; s->d[2 * 16 + 9] = C_GREEN;
+    s->d[3 * 16 + 7] = C_BLACK; s->d[3 * 16 + 8] = C_BLACK;
+    s->d[2 * 16 + 10] = C_GREEN;
+}
+
 static void sprites_init(void)
 {
     if (sprites_ready) return;
@@ -484,6 +527,12 @@ static void sprites_init(void)
     make_sprite(&SPR[S_DEAD],     R_DEAD,     16, 16);
     make_sprite(&SPR[S_GRAVE],    R_GRAVE,    16, 16);
     make_sprite(&SPR[S_LAMP],     R_LAMP,     16, 16);
+    make_sprite(&SPR[S_SKEL0],    R_SKEL,     16, 16);
+    SPR[S_SKEL1] = SPR[S_SKEL0];                                   /* second frame: head and shoulders lean 1px */
+    for (int y = 1; y < 8; y++)
+        for (int x = 15; x > 0; x--) SPR[S_SKEL1].d[y * 16 + x] = SPR[S_SKEL0].d[y * 16 + x - 1];
+    for (int y = 1; y < 8; y++) SPR[S_SKEL1].d[y * 16] = 255;
+    for (int i = 0; i < 3; i++) make_pumpkin(&SPR[S_PUMP0 + i], i);
     make_sprite(&SPR[S_HEART],    R_HEART,     7,  6);
     make_sprite(&SPR[S_COIN],     R_COIN,      6,  6);
     sprites_ready = 1;
@@ -604,15 +653,20 @@ void game_path_point(float d, float *x, float *y)
 }
 
 /* scenery codes (the numbers 1-3 are level 1's: tree, rock, flower) */
-enum { D_NONE, D_TREE, D_ROCK, D_FLORA, D_DEAD, D_GRAVE, D_LAMP };
+enum { D_NONE, D_TREE, D_ROCK, D_FLORA, D_DEAD, D_GRAVE, D_LAMP, D_PUMPKIN, D_SKEL, D_BONES };
 static uint8_t decor_map[MAP_H][MAP_W];
+static uint8_t decor_ramp[MAP_H][MAP_W];     /* 0/1/2: is the ground under this tile lit (warm/cool) by a glow? */
+/* grass sample points for the wind shimmer */
+static uint16_t wind_pt[2 * MAP_W * MAP_H][2];
+static int      wind_n;
 
 static int decor_at(int tx, int ty) { return decor_map[ty][tx]; }
-static int decor_blocks(int d) { return d != D_NONE && d != D_FLORA; }
+static int decor_blocks(int d) { return d != D_NONE && d != D_FLORA && d != D_BONES; }
 
 static void decor_init(int level)
 {
     memset(decor_map, 0, sizeof decor_map);
+    memset(decor_ramp, 0, sizeof decor_ramp);
     if (level == 0) {
         for (int ty = 0; ty < MAP_H; ty++)
             for (int tx = 0; tx < MAP_W; tx++)
@@ -633,13 +687,33 @@ static void decor_init(int level)
             int h = (int)(hash2(tx, ty, level * 41 + 7) % 100);
             int pick = (int)(hash2(tx, ty, level * 29 + 5) % 100);
             int d = D_NONE;
-            if (near && (int)(hash2(tx, ty, level * 13 + 3) % 100) < 5) d = D_LAMP;
-            else if (h < (near ? 4 : 12)) {
-                if (level == 1)      d = pick < 55 ? D_DEAD : (pick < 85 ? D_ROCK : D_GRAVE);
-                else if (level == 2) d = pick < 45 ? D_GRAVE : (pick < 85 ? D_DEAD : D_ROCK);
-                else                 d = pick < 60 ? D_ROCK : (pick < 85 ? D_DEAD : D_GRAVE);
-            } else if (h < (near ? 11 : 24)) d = D_FLORA;
+            int lit = (int)(hash2(tx, ty, level * 13 + 3) % 100);
+            if (near && lit < 5) d = D_LAMP;
+            else if (h < (near ? 5 : 16)) {
+                /* halloween mix: dead trees, rocks, gravestones, jack-o'-lanterns and skeletons */
+                static const uint8_t cut[3][4] = {      /* cumulative %: dead, rock, grave, pumpkin (rest: skeleton) */
+                    {25, 38, 55, 82}, {18, 28, 48, 78}, {15, 40, 52, 80}
+                };
+                const uint8_t *c = cut[level - 1];
+                d = pick < c[0] ? D_DEAD : pick < c[1] ? D_ROCK : pick < c[2] ? D_GRAVE : pick < c[3] ? D_PUMPKIN : D_SKEL;
+            } else if (h < (near ? 12 : 28)) d = (pick < 35) ? D_BONES : D_FLORA;
             decor_map[ty][tx] = (uint8_t)d;
+        }
+}
+
+/* grass sample points for the wind shimmer (tiles with nothing standing on them) */
+static void wind_init(void)
+{
+    wind_n = 0;
+    for (int ty = 0; ty < MAP_H; ty++)
+        for (int tx = 0; tx < MAP_W; tx++) {
+            if (is_path[ty][tx] || decor_blocks(decor_map[ty][tx])) continue;
+            for (int k = 0; k < 2; k++) {
+                uint32_t h = hash2(tx, ty, 900 + k);
+                wind_pt[wind_n][0] = (uint16_t)(tx * TILE + 1 + (int)(h % 14));
+                wind_pt[wind_n][1] = (uint16_t)(ty * TILE + 1 + (int)((h >> 8) % 14));
+                wind_n++;
+            }
         }
 }
 
@@ -692,6 +766,22 @@ static void bg_puddle(uint8_t *bg, int cx, int cy)
             if (dx * dx * 4 + dy * dy * 16 <= 64) bgpx(bg, cx + dx, cy + dy, C_DKBLUE);
     bgpx(bg, cx - 2, cy - 1, C_BLUE); bgpx(bg, cx - 1, cy - 1, C_BLUE);
     bgpx(bg, cx + 2, cy, C_SKY);
+}
+
+/* a skull and crossed bones lying in the grass */
+static void bg_bones(uint8_t *bg, int x0, int y0, uint32_t h)
+{
+    int sh = (int)(h % 3) - 1;
+    for (int k = 0; k < 6; k++) {                                       /* two crossed bones */
+        bgpx(bg, x0 + 2 + k + sh, y0 + 11 + k / 3, C_LIGHT); bgpx(bg, x0 + 13 - k + sh, y0 + 11 + k / 3, C_LIGHT);
+    }
+    bgpx(bg, x0 + 1 + sh, y0 + 10, C_WHITE); bgpx(bg, x0 + 1 + sh, y0 + 12, C_WHITE);
+    bgpx(bg, x0 + 14 + sh, y0 + 10, C_WHITE); bgpx(bg, x0 + 14 + sh, y0 + 12, C_WHITE);
+    for (int i = 5; i <= 10; i++) { bgpx(bg, x0 + i + sh, y0 + 6, C_LIGHT); bgpx(bg, x0 + i + sh, y0 + 7, C_WHITE); bgpx(bg, x0 + i + sh, y0 + 8, C_WHITE); }
+    for (int i = 6; i <= 9; i++) bgpx(bg, x0 + i + sh, y0 + 9, C_LIGHT);
+    bgpx(bg, x0 + 6 + sh, y0 + 7, C_BLACK); bgpx(bg, x0 + 9 + sh, y0 + 7, C_BLACK);   /* eye sockets */
+    bgpx(bg, x0 + 6 + sh, y0 + 8, C_BLACK); bgpx(bg, x0 + 9 + sh, y0 + 8, C_BLACK);
+    bgpx(bg, x0 + 7 + sh, y0 + 9, C_BLACK); bgpx(bg, x0 + 8 + sh, y0 + 9, C_GRAY);
 }
 
 /* glowing plants: blue flowers (moor), toadstools (marsh), crystals (peak) */
@@ -770,7 +860,12 @@ static void build_bg_storm(Game *g)
                 switch (dc) {
                 case D_DEAD:
                     for (int i = -5; i <= 5; i++) { bgpx(bg, x0 + 8 + i, y0 + 14, C_GRASS2); bgpx(bg, x0 + 8 + i, y0 + 15, C_GRASS2); }
-                    bg_blit(bg, &SPR[S_DEAD], x0, y0); break;
+                    break;                                              /* drawn live (it sways) */
+                case D_PUMPKIN: case D_SKEL:
+                    for (int i = -5; i <= 5; i++) bgpx(bg, x0 + 8 + i, y0 + 15, C_GRASS2);
+                    break;                                              /* drawn live (flicker / idle) */
+                case D_BONES:
+                    bg_bones(bg, x0, y0, hash2(tx, ty, 700)); break;
                 case D_GRAVE:
                     for (int i = -6; i <= 6; i++) bgpx(bg, x0 + 8 + i, y0 + 14, C_GRASS2);
                     bg_blit(bg, &SPR[S_GRAVE], x0, y0); break;
@@ -778,7 +873,8 @@ static void build_bg_storm(Game *g)
                     for (int i = -6; i <= 6; i++) bgpx(bg, x0 + 8 + i, y0 + 14, C_GRASS2);
                     bg_blit(bg, &SPR[S_ROCK], x0, y0); break;
                 case D_LAMP:
-                    bg_blit(bg, &SPR[S_LAMP], x0, y0); break;
+                    for (int i = -4; i <= 4; i++) bgpx(bg, x0 + 8 + i, y0 + 15, C_GRASS2);
+                    break;                                              /* drawn live (flame flickers) */
                 case D_FLORA:
                     bg_flora(bg, lv, x0, y0, tx, ty); break;
                 default: break;
@@ -794,10 +890,18 @@ static void build_bg_storm(Game *g)
         for (int tx = 0; tx < MAP_W; tx++) {
             int dc = decor_at(tx, ty);
             if (dc == D_LAMP)  glow_buf(bg, MAP_H * TILE, tx * TILE + 8, ty * TILE + 6, 17, 1);
+            if (dc == D_PUMPKIN) glow_buf(bg, MAP_H * TILE, tx * TILE + 8, ty * TILE + 9, 11, 1);
             if (dc == D_FLORA && !is_path[ty][tx]) glow_buf(bg, MAP_H * TILE, tx * TILE + 8, ty * TILE + 9, 9, 2);
         }
     glow_buf(bg, MAP_H * TILE, LV->wp[LV->nwp - 1][0] * TILE + 8, LV->wp[LV->nwp - 1][1] * TILE + 8, 24, 1);
     glow_buf(bg, MAP_H * TILE, LV->wp[0][0] * TILE + 8, LV->wp[0][1] * TILE + 8, 22, 2);
+
+    /* remember whether each live-drawn scenery tile sits in a glow, so its sprite can be lit the same way */
+    for (int ty = 0; ty < MAP_H; ty++)
+        for (int tx = 0; tx < MAP_W; tx++) {
+            int v = bg[(ty * TILE + 12) * SCREEN_W + tx * TILE + 8];
+            decor_ramp[ty][tx] = (uint8_t)(v >= 64 ? 2 : (v >= 32 ? 1 : 0));
+        }
 
     /* vignette: the edges of the map fall into darkness */
     for (int y = 0; y < MAP_H * TILE; y++)
@@ -860,7 +964,7 @@ static void build_bg(Game *g)
                 int dc = decor_at(tx, ty);
                 if (dc == 1) {
                     for (int i = -5; i <= 5; i++) { bgpx(bg, x0 + 8 + i, y0 + 14, C_GRASS2); bgpx(bg, x0 + 8 + i, y0 + 15, C_GRASS2); }
-                    bg_blit(bg, &SPR[S_TREE], x0, y0);
+                    /* the tree itself is drawn live (it sways) */
                 } else if (dc == 2) {
                     for (int i = -6; i <= 6; i++) bgpx(bg, x0 + 8 + i, y0 + 14, C_GRASS2);
                     bg_blit(bg, &SPR[S_ROCK], x0, y0);
@@ -1438,6 +1542,7 @@ static void setup_level(Game *g, int lvl)
     if (lvl < 0 || lvl >= NUM_LEVELS) lvl = 0;
     path_init(lvl);
     decor_init(lvl);
+    wind_init();
     g->level = lvl; g->nwaves = LEVELS[lvl].nwaves;
     build_bg(g);
     g->strike_t = 30.0f; g->strike_amp = 0; g->thunder_pending = 0;
@@ -1820,32 +1925,111 @@ static void draw_rain(uint8_t *fb, const Game *g)
 {
     const int P = MAP_H * TILE + 16;
     long long f = (long long)g->frame;
-    for (int i = 0; i < 132; i++) {
+    for (int i = 0; i < 52; i++) {
         uint32_t h = hash2(i, 5, 77);
-        int layer = i % 3, sp = 3 + layer * 2, len = 3 + layer * 2;
+        int layer = (i % 4 == 3) ? 2 : (i & 1);              /* mostly faint far/mid drops, a few near ones */
+        int sp = 3 + layer * 2, len = 3 + layer * 2;
         int x0 = (int)(h % 360), y0 = (int)((h >> 9) % (uint32_t)P);
         int y = (int)((y0 + f * sp) % P) - 8;
         int x = (int)((((x0 - f * sp / 3) % 360) + 360) % 360) - 20;
-        int c = layer == 0 ? C_GRAY : (layer == 1 ? C_LIGHT : C_ICE);
-        for (int k = 0; k < len; k++) rain_px(fb, x + k / 3, y - k, c);
+        int c = layer == 2 ? C_LIGHT : C_GRAY;
+        for (int k = 0; k < len; k++) {
+            if (layer == 0 && (k & 1)) continue;             /* far drops are dotted: more transparent */
+            rain_px(fb, x + k / 3, y - k, c);
+        }
     }
-    for (int j = 0; j < 28; j++) {                       /* ripples where drops land */
+    for (int j = 0; j < 12; j++) {                           /* faint ripples where drops land */
         uint32_t h = hash2(j, 9, 31);
-        long long t = f + (long long)(h % 24);
-        int ph = (int)(t % 24);
+        long long t = f + (long long)(h % 30);
+        int ph = (int)(t % 30);
         if (ph >= 8) continue;
-        uint32_t pos = hash2(j, (int)(t / 24), 33);
+        uint32_t pos = hash2(j, (int)(t / 30), 33);
         int x = (int)(pos % 320), y = (int)((pos >> 9) % (MAP_H * TILE)), r = 1 + ph / 3;
-        int c = ph < 4 ? C_LIGHT : C_GRAY;
-        rain_px(fb, x - r, y, c); rain_px(fb, x + r, y, c);
-        rain_px(fb, x - r / 2, y - 1, c); rain_px(fb, x + r / 2, y - 1, c);
-        rain_px(fb, x - r / 2, y + 1, c); rain_px(fb, x + r / 2, y + 1, c);
+        rain_px(fb, x - r, y, C_GRAY); rain_px(fb, x + r, y, C_GRAY);
+        rain_px(fb, x - r / 2, y + 1, C_GRAY); rain_px(fb, x + r / 2, y + 1, C_GRAY);
     }
+}
+
+/* ---- living scenery: swaying trees, flickering flames, idle skeletons, twinkles, wind over the grass ---- */
+static void sprite_live(uint8_t *fb, const Sprite *s, int x, int y, const int8_t *off, int ramp)
+{
+    for (int j = 0; j < s->h; j++) {
+        int o = off ? off[j] : 0;
+        for (int i = 0; i < s->w; i++) {
+            int c = s->d[j * s->w + i];
+            if (c != 255) px(fb, x + i + o, y + j, c + ramp);
+        }
+    }
+}
+
+static void draw_scenery(uint8_t *fb, const Game *g)
+{
+    int f = (int)(g->frame & 0xFFFFFF);
+    /* wind: a soft band of light drifts across the grass */
+    for (int i = 0; i < wind_n; i++) {
+        int x = wind_pt[i][0], y = wind_pt[i][1];
+        if (((x * 2 + y - f) & 511) >= 14) continue;
+        uint8_t *p = &fb[(MAP_Y + y) * SCREEN_W + x];
+        if (*p == C_GRASS1) *p = (uint8_t)(g->level ? C_GRASS1 + 64 : C_LTGREEN);
+    }
+    for (int ty = 0; ty < MAP_H; ty++)
+        for (int tx = 0; tx < MAP_W; tx++) {
+            int dc = decor_map[ty][tx];
+            if (dc == D_NONE) continue;
+            int x0 = tx * TILE, y0 = MAP_Y + ty * TILE, ramp = decor_ramp[ty][tx] * 32;
+            uint32_t h = hash2(tx, ty, 17);
+            switch (dc) {
+            case D_TREE: case D_DEAD: {
+                int8_t off[16];
+                float sw = trig_sin[(f * 5 + (int)(h % 1024)) & 1023] * (0.55f + 0.45f * trig_sin[(f * 2 + (int)(h % 997)) & 1023]);
+                float amp = dc == D_TREE ? 1.6f : 2.1f;
+                for (int j = 0; j < 16; j++) off[j] = j < 11 ? (int8_t)lrintf(sw * amp * (float)(11 - j) / 11.0f) : 0;
+                sprite_live(fb, &SPR[dc == D_TREE ? S_TREE : S_DEAD], x0, y0, off, ramp);
+                break;
+            }
+            case D_PUMPKIN: {
+                uint32_t v = hash2(tx, ty, f / 6) % 10;
+                sprite_live(fb, &SPR[S_PUMP0 + (v == 0 ? 2 : (v < 4 ? 1 : 0))], x0, y0, NULL, ramp);
+                break;
+            }
+            case D_SKEL: {
+                int lean = ((f / 50 + (int)(h & 1)) & 1);
+                sprite_live(fb, &SPR[S_SKEL0 + lean], x0, y0, NULL, ramp);
+                int ec = ((f / 9 + (int)(h % 11)) % 11 < 9) ? C_ORANGE : C_YELLOW;
+                for (int k = 0; k < 2; k++) {                      /* glowing eyes */
+                    px(fb, x0 + 6 + lean, y0 + 3 + k, ec); px(fb, x0 + 9 + lean, y0 + 3 + k, ec);
+                }
+                break;
+            }
+            case D_LAMP: {
+                static const uint8_t pat[3][8] = {
+                    {C_YELLOW, C_WHITE, C_WHITE, C_YELLOW, C_YELLOW, C_WHITE, C_WHITE, C_YELLOW},
+                    {C_WHITE, C_WHITE, C_YELLOW, C_YELLOW, C_YELLOW, C_WHITE, C_WHITE, C_ORANGE},
+                    {C_YELLOW, C_YELLOW, C_WHITE, C_WHITE, C_ORANGE, C_WHITE, C_YELLOW, C_YELLOW}
+                };
+                sprite_live(fb, &SPR[S_LAMP], x0, y0, NULL, ramp);
+                const uint8_t *pt = pat[hash2(tx, ty, f / 4) % 3];
+                for (int k = 0; k < 8; k++) px(fb, x0 + 6 + (k & 3), y0 + 3 + (k >> 2), pt[k] + ramp);
+                break;
+            }
+            case D_FLORA: {                                         /* an occasional twinkle */
+                int ph = (f + (int)(h % 110)) % 110;
+                if (ph < 8) {
+                    int sx = x0 + 3 + (int)((h >> 5) % 10), sy = y0 + 4 + (int)((h >> 11) % 7);
+                    px(fb, sx, sy, C_WHITE);
+                    if (ph > 1 && ph < 6) { px(fb, sx - 1, sy, C_WHITE); px(fb, sx + 1, sy, C_WHITE); px(fb, sx, sy - 1, C_WHITE); px(fb, sx, sy + 1, C_WHITE); }
+                }
+                break;
+            }
+            default: break;
+            }
+        }
 }
 
 static void draw_world(uint8_t *fb, const Game *g)
 {
     memcpy(fb + MAP_Y * SCREEN_W, g->bg, sizeof g->bg);
+    draw_scenery(fb, g);
     blit_phase = (int)(g->frame >> 3);
     blit(fb, &SPR[S_PORTAL], LV->wp[0][0] * TILE, MAP_Y + LV->wp[0][1] * TILE, M_PULSE);
     draw_keep_flag(fb, g);

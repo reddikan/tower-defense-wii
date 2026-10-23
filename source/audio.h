@@ -2,8 +2,8 @@
  * TOWER DEFENSE - procedurally synthesized sound effects.
  *
  * No audio assets are needed: every effect is generated at start-up from a few
- * oscillators (square / triangle / saw / sine) and filtered noise, in the style
- * of old 8-bit consoles. Samples are 16-bit signed mono at SFX_RATE Hz in the
+ * FM and band-limited oscillators, resonant filtered noise and a small reverb, for a clean
+ * modern sound. Samples are 16-bit signed mono at SFX_RATE Hz in the
  * host's native byte order (big-endian on the Wii, which is what ASND wants).
  */
 #ifndef AUDIO_H
@@ -11,7 +11,7 @@
 
 #include <stdint.h>
 
-#define SFX_RATE 22050
+#define SFX_RATE 44100
 
 enum {
     SFX_MOVE, SFX_SELECT, SFX_BUILD, SFX_UPGRADE, SFX_SELL, SFX_ERROR,

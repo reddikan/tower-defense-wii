@@ -185,8 +185,10 @@ int main(int argc, char **argv)
     xfb[0] = SYS_AllocateFramebuffer(rmode);
     xfb[1] = SYS_AllocateFramebuffer(rmode);
 
-    /* follow the console's aspect-ratio setting (in Dolphin: Config > Wii > Aspect Ratio) */
-    wide = (CONF_GetAspectRatio() == CONF_ASPECT_16_9);
+    /* Start in full 16:9 mode no matter what the console's aspect-ratio flag says: Dolphin's default flag is
+     * 4:3 even when the window is widescreen, which used to need a press of MINUS. MINUS still toggles a
+     * letterboxed picture for anyone playing on a real 4:3 TV. */
+    wide = 1;
     rmode->viWidth   = wide ? 678 : 640;
     rmode->viXOrigin = (VI_MAX_WIDTH_NTSC - rmode->viWidth) / 2;
     VIDEO_Configure(rmode);

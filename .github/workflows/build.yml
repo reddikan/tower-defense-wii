@@ -6,15 +6,7 @@ jobs:
     container: devkitpro/devkitppc:latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build
-        run: |
-          set +e
-          make > build.log 2>&1
-          rc=$?
-          if [ $rc -ne 0 ]; then
-            head -c 3500 build.log | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g' | while read -r l; do echo "::error title=BUILD LOG::$l"; done
-          fi
-          exit $rc
+      - run: make
       - uses: actions/upload-artifact@v4
         with:
           name: tower-defense-wii

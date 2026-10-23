@@ -1,7 +1,7 @@
 # TOWER DEFENSE  (Wii homebrew)
 
 A retro, top-down, colourful tower defense game for the Nintendo Wii, played with the
-**Wii Classic Controller** (no motion controls). 16:9, 60 fps, 8-bit style graphics and sound effects.
+**Wii Classic Controller** (no motion controls). 16:9, 60 fps, retro-style graphics and clean, modern-sounding sound effects.
 Build **arrow**, **cannon** and **frost** towers along the road and stop slimes, bats, golems and bosses
 from reaching your keep. There are **4 levels**:
 
@@ -25,7 +25,7 @@ and shots. Clearing a level takes you to the next one with fresh gold and lives.
 | X | call the next wave early (bonus gold for the time saved) |
 | Y | fast-forward on/off |
 | + | pause |
-| - | switch screen mode (16:9 fill / 4:3 letterbox) if the picture looks squashed or stretched |
+| - | switch screen mode: the game starts filling a 16:9 screen; press - for a letterboxed picture on a 4:3 TV |
 | HOME | quit |
 
 Tips: cannons only hit ground enemies (bats fly), frost slows everything it touches, towers go up to
