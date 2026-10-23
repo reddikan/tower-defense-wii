@@ -42,7 +42,7 @@ static const uint8_t DARK[32] = {
 };
 
 /* DARK for any palette index: keeps the glow ramp (0 base, 32 warm-lit, 64 cool-lit) */
-static inline uint8_t dark_of(uint8_t c) { return (uint8_t)((c & 0x60) | DARK[c & 31]); }
+static inline uint8_t dark_of(uint8_t c) { return (uint8_t)((c & 0xE0) | DARK[c & 31]); }
 
 /* ------------------------------------------------------------------ */
 /* Game data tables                                                    */
@@ -82,8 +82,7 @@ static const uint8_t WAVES[NUM_WAVES][4] = {
 static const float SFX_GAP[SFX_COUNT] = {
     0.03f, 0.05f, 0.10f, 0.10f, 0.10f, 0.20f,   /* move select build upgrade sell error */
     0.09f, 0.10f, 0.11f, 0.09f, 0.075f, 0.15f,  /* arrow cannon frost explode kill leak */
-    0.50f, 0.50f, 0.50f, 0.50f, 0.10f, 1.00f, 1.00f, /* wave boss clear start pause over win */
-    1.50f                                            /* thunder */
+    0.50f, 0.50f, 0.50f, 0.50f, 0.10f, 1.00f, 1.00f  /* wave boss clear start pause over win */
 };
 
 /* Storm levels (2-4): same enemies, bigger numbers */
@@ -223,7 +222,7 @@ static void glow_buf(uint8_t *buf, int h, int cx, int cy, int r, int ramp)
     if (y1 >= h) y1 = h - 1;
     if (x0 < 0) x0 = 0;
     if (x1 >= SCREEN_W) x1 = SCREEN_W - 1;
-    int r2 = r * r, in2 = r2 * 2 / 9, add = ramp * 32;
+    int r2 = r * r, full = ramp * 32, dim = (ramp + 2) * 32;
     for (int y = y0; y <= y1; y++) {
         uint8_t *row = buf + y * SCREEN_W;
         int dy = y - cy;
@@ -232,10 +231,13 @@ static void glow_buf(uint8_t *buf, int h, int cx, int cy, int r, int ramp)
             if (d2 > r2) continue;
             uint8_t c = row[x];
             if (c >= 32) continue;
-            if (d2 > in2) {
-                int lvl = 15 - (d2 - in2) * 16 / (r2 - in2 + 1);
-                if (BAYER4[(y & 3) * 4 + (x & 3)] >= lvl) continue;
-            }
+            int t = d2 * 64 / (r2 + 1), b = BAYER4[(y & 3) * 4 + (x & 3)];
+            int add;
+            if (t < 8) add = full;                                   /* bright core */
+            else if (t < 24) add = (b < (24 - t)) ? full : dim;      /* core melts into the faint tint */
+            else if (t < 40) add = dim;                              /* soft ambient tint */
+            else if (b < (64 - t) * 16 / 24) add = dim;              /* feathered edge */
+            else continue;
             row[x] = (uint8_t)(c + add);
         }
     }
@@ -547,6 +549,7 @@ static void sprites_init(void)
 /* blit modes: tier 2 = blue trim, tier 3 = gold trim (towers); ghost = see-through placement preview */
 enum { M_NORMAL, M_FLASH, M_FROZEN, M_DIM, M_TIER2, M_TIER3, M_GHOST, M_PULSE };
 static int blit_phase;
+static int blit_add;                         /* ambient light: palette offset added to every sprite pixel (0, 32, 64, 96, 128) */
 
 static void blit(uint8_t *fb, const Sprite *s, int x, int y, int mode)
 {
@@ -591,7 +594,7 @@ static void blit(uint8_t *fb, const Sprite *s, int x, int y, int mode)
         const uint8_t *r = s->d + j * s->w;
         for (int i = i0; i < i1; i++) {
             uint8_t c = r[i];
-            if (c != 255) d[i] = map[c & 31];
+            if (c != 255) d[i] = (uint8_t)(map[c & 31] + (map[c & 31] < 32 && mode != M_FLASH ? blit_add : 0));
         }
     }
 }
@@ -895,18 +898,18 @@ static void build_bg_storm(Game *g)
     for (int ty = 0; ty < MAP_H; ty++)
         for (int tx = 0; tx < MAP_W; tx++) {
             int dc = decor_at(tx, ty);
-            if (dc == D_LAMP)  glow_buf(bg, MAP_H * TILE, tx * TILE + 8, ty * TILE + 6, 11, 1);
-            if (dc == D_PUMPKIN) glow_buf(bg, MAP_H * TILE, tx * TILE + 8, ty * TILE + 9, 7, 1);
-            if (dc == D_FLORA && !is_path[ty][tx]) glow_buf(bg, MAP_H * TILE, tx * TILE + 8, ty * TILE + 9, 6, 2);
+            if (dc == D_LAMP)  glow_buf(bg, MAP_H * TILE, tx * TILE + 8, ty * TILE + 6, 16, 1);
+            if (dc == D_PUMPKIN) glow_buf(bg, MAP_H * TILE, tx * TILE + 8, ty * TILE + 9, 11, 1);
+            if (dc == D_FLORA && !is_path[ty][tx]) glow_buf(bg, MAP_H * TILE, tx * TILE + 8, ty * TILE + 9, 9, 2);
         }
-    glow_buf(bg, MAP_H * TILE, LV->wp[LV->nwp - 1][0] * TILE + 8, LV->wp[LV->nwp - 1][1] * TILE + 8, 15, 1);
-    glow_buf(bg, MAP_H * TILE, LV->wp[0][0] * TILE + 8, LV->wp[0][1] * TILE + 8, 14, 2);
+    glow_buf(bg, MAP_H * TILE, LV->wp[LV->nwp - 1][0] * TILE + 8, LV->wp[LV->nwp - 1][1] * TILE + 8, 22, 1);
+    glow_buf(bg, MAP_H * TILE, LV->wp[0][0] * TILE + 8, LV->wp[0][1] * TILE + 8, 20, 2);
 
     /* remember whether each live-drawn scenery tile sits in a glow, so its sprite can be lit the same way */
     for (int ty = 0; ty < MAP_H; ty++)
         for (int tx = 0; tx < MAP_W; tx++) {
             int v = bg[(ty * TILE + 12) * SCREEN_W + tx * TILE + 8];
-            decor_ramp[ty][tx] = (uint8_t)(v >= 64 ? 2 : (v >= 32 ? 1 : 0));
+            decor_ramp[ty][tx] = (uint8_t)(v >> 5);          /* 0 unlit, 1 warm, 2 cool, 3 faint warm, 4 faint cool */
         }
 
     /* vignette: the edges of the map fall into darkness */
@@ -1057,6 +1060,8 @@ static void palettes_init(void)
                 PAL_LV[lv][c][k] = clamp8(rgb[k]);
                 PAL_LV[lv][32 + c][k] = clamp8((rgb[k] + (t->warm[k] - rgb[k]) * 0.38f) * 1.1f);
                 PAL_LV[lv][64 + c][k] = clamp8((rgb[k] + (t->cool[k] - rgb[k]) * 0.38f) * 1.1f);
+                PAL_LV[lv][96 + c][k] = clamp8((rgb[k] + (t->warm[k] - rgb[k]) * 0.17f) * 1.04f);
+                PAL_LV[lv][128 + c][k] = clamp8((rgb[k] + (t->cool[k] - rgb[k]) * 0.17f) * 1.04f);
             }
         }
     }
@@ -1103,8 +1108,12 @@ static uint32_t rnd(Game *g)
 static float rndf(Game *g) { return (float)(rnd(g) >> 8) * (1.0f / 16777216.0f); }
 
 /* queue a sound effect for the platform layer (throttled per effect) */
+static int sound_on = 1;                    /* the pause menu can switch every sound effect off */
+int game_sound_on(void) { return sound_on; }
+
 static void sfx(Game *g, int id)
 {
+    if (!sound_on) return;
     if (g->sfx_cd[id] > 0) return;
     g->sfx_cd[id] = SFX_GAP[id];
     int n = (g->sfx_head + 1) & 31;
@@ -1179,10 +1188,6 @@ static void update_weather(Game *g, float dt)
     if (g->level == 0) return;
     g->strike_t += dt;
     if (g->strike_t > 30.0f) g->strike_t = 30.0f;
-    if (g->thunder_pending) {
-        g->thunder_t -= dt;
-        if (g->thunder_t <= 0) { g->thunder_pending = 0; sfx(g, SFX_THUNDER); }
-    }
     g->bolt_cd -= dt;
     if (g->bolt_cd > 0) return;
 
@@ -1204,8 +1209,6 @@ static void update_weather(Game *g, float dt)
             add_ring(g, (float)g->bolt_x1, (float)g->bolt_y1, 13, 0.3f, C_CYAN);
         }
     }
-    g->thunder_t = 0.25f + wrndf(g) * 0.9f;
-    g->thunder_pending = 1;
     g->bolt_cd = 3.5f + wrndf(g) * 6.0f;
 }
 
@@ -1299,10 +1302,29 @@ static int enemies_alive(const Game *g)
     return n;
 }
 
+static int best_wave[NUM_LEVELS];             /* best wave reached on each level this session */
+int game_best_wave(int level) { return level < 0 || level >= NUM_LEVELS ? 0 : best_wave[level]; }
+
+/* The hand-made tables cover the first waves; after that each wave is the last table row, bigger every time,
+   with a boss every fifth wave, so the game never ends until the keep falls. */
+static void wave_counts(int wave, uint8_t out[4])
+{
+    if (wave <= LV->nwaves) { memcpy(out, LV->waves[wave - 1], 4); return; }
+    const uint8_t *base = LV->waves[LV->nwaves - 1];
+    int k = wave - LV->nwaves;
+    for (int t = 0; t < 3; t++) {
+        int n = base[t] * (100 + 14 * k) / 100;
+        out[t] = (uint8_t)(n > 70 ? 70 : n);
+    }
+    int b = (wave % 5 == 0) ? 1 + k / 8 : 0;
+    out[3] = (uint8_t)(b > 8 ? 8 : b);
+}
+
 static void start_wave(Game *g)
 {
     g->wave++;
-    const uint8_t *w = LV->waves[g->wave - 1];
+    uint8_t w[4];
+    wave_counts(g->wave, w);
     int n = 0;
     for (int t = 0; t < 4; t++)
         for (int k = 0; k < w[t] && n < 256; k++) g->spawn_q[n++] = (uint8_t)t;
@@ -1325,12 +1347,16 @@ static void kill_enemy(Game *g, Enemy *e)
     int gold = EN_DEF[e->type].gold;
     g->gold += gold; g->kills++;
     add_text(g, e->x, e->y - 8, gold);
-    burst(g, e->x, e->y, e->type == EN_BOSS ? 44 : 12, c1[e->type], c2[e->type],
-          e->type == EN_BOSS ? 95 : 60, 0.5f);
+    burst(g, e->x, e->y, e->type == EN_BOSS ? 130 : 34, c1[e->type], c2[e->type],
+          e->type == EN_BOSS ? 150 : 95, 0.65f);
+    burst(g, e->x, e->y, e->type == EN_BOSS ? 40 : 8, C_WHITE, C_YELLOW, 140, 0.35f);
+    add_ring(g, e->x, e->y, e->type == EN_BOSS ? 20 : 11, 0.25f, c1[e->type]);
+    if (g->shake_t < 0.08f) g->shake_t = 0.08f;
     if (e->type == EN_BOSS) {
-        add_ring(g, e->x, e->y, 34, 0.5f, C_ORANGE);
+        add_ring(g, e->x, e->y, 46, 0.6f, C_ORANGE);
+        add_ring(g, e->x, e->y, 30, 0.45f, C_RED);
         add_ring(g, e->x, e->y, 22, 0.35f, C_YELLOW);
-        g->shake_t = 0.5f;
+        g->shake_t = 0.9f;
         sfx(g, SFX_EXPLODE);
     } else {
         sfx(g, SFX_KILL);
@@ -1342,6 +1368,7 @@ static void hurt_enemy(Game *g, Enemy *e, float dmg)
 {
     e->hp -= dmg;
     e->hitflash = 0.07f;
+    burst(g, e->x, e->y, 4, C_WHITE, C_YELLOW, 80, 0.2f);
     if (e->hp <= 0) kill_enemy(g, e);
 }
 
@@ -1360,10 +1387,13 @@ static void update_enemies(Game *g, float dt)
                 g->lives -= EN_DEF[e->type].leak;
                 g->hurt_t = 0.45f;
                 g->shake_t = EN_DEF[e->type].leak >= 10 ? 0.6f : 0.25f;
-                burst(g, 304, e->y, 14, C_RED, C_ORANGE, 75, 0.5f);
+                burst(g, 304, e->y, 40, C_RED, C_ORANGE, 120, 0.6f);
                 add_ring(g, 304, e->y, 16, 0.3f, C_RED);
                 sfx(g, SFX_LEAK);
-                if (g->lives <= 0) { g->lives = 0; g->state = ST_OVER; g->state_t = 0; sfx(g, SFX_OVER); }
+                if (g->lives <= 0) {
+                    g->lives = 0; g->state = ST_OVER; g->state_t = 0; sfx(g, SFX_OVER);
+                    if (g->wave > best_wave[g->level]) { best_wave[g->level] = g->wave; g->new_best = 1; }
+                }
             }
             continue;
         }
@@ -1388,11 +1418,19 @@ static void fire(Game *g, int tx, int ty, Tower *t, int ei)
             p->dmg = TW_DMG[t->type][t->level];
             t->flash = 0.07f;
             if (t->type == TW_CANNON) {
-                burst(g, p->x, p->y - 4, 6, C_LIGHT, C_GRAY, 35, 0.35f);
+                burst(g, p->x, p->y - 4, 18, C_ORANGE, C_YELLOW, 80, 0.4f);
+                burst(g, p->x, p->y - 4, 10, C_LIGHT, C_GRAY, 40, 0.5f);
+                add_ring(g, p->x, p->y - 4, 13, 0.2f, C_YELLOW);
+                if (g->shake_t < 0.07f) g->shake_t = 0.07f;
                 sfx(g, SFX_CANNON);
+            } else if (t->type == TW_FROST) {
+                burst(g, p->x, p->y - 2, 12, C_ICE, C_CYAN, 65, 0.35f);
+                add_ring(g, p->x, p->y - 2, 10, 0.25f, C_CYAN);
+                sfx(g, SFX_FROST);
             } else {
-                add_part(g, p->x, p->y - 2, 0, -12, 0.15f, t->type == TW_FROST ? C_ICE : C_WHITE, 1);
-                sfx(g, t->type == TW_FROST ? SFX_FROST : SFX_ARROW);
+                burst(g, p->x, p->y - 2, 7, C_WHITE, C_YELLOW, 70, 0.25f);
+                add_ring(g, p->x, p->y - 2, 7, 0.15f, C_YELLOW);
+                sfx(g, SFX_ARROW);
             }
             return;
         }
@@ -1431,8 +1469,9 @@ static void hit_projectile(Game *g, Proj *p)
     if (p->type == TW_ARROW) {
         if (tg) {
             hurt_enemy(g, tg, p->dmg);
-            add_part(g, p->x, p->y, -p->vx * 0.2f, -p->vy * 0.2f - 10, 0.2f, C_WHITE, 1);
-            add_part(g, p->x, p->y, p->vy * 0.2f, -p->vx * 0.2f - 10, 0.2f, C_TAN, 1);
+            burst(g, p->x, p->y, 14, C_WHITE, C_YELLOW, 110, 0.3f);
+            burst(g, p->x, p->y, 6, C_ORANGE, C_TAN, 60, 0.4f);
+            add_ring(g, p->x, p->y, 9, 0.18f, C_WHITE);
         }
     } else if (p->type == TW_CANNON) {
         float r = TW_SPLASH[TW_CANNON][p->level];
@@ -1442,10 +1481,13 @@ static void hit_projectile(Game *g, Proj *p)
             float dx = e->x - p->x, dy = e->y - p->y;
             if (dx * dx + dy * dy <= r * r) hurt_enemy(g, e, p->dmg);
         }
-        burst(g, p->x, p->y, 18, C_ORANGE, C_YELLOW, 80, 0.45f);
-        burst(g, p->x, p->y, 8, C_DKSTONE, C_GRAY, 40, 0.55f);
-        add_ring(g, p->x, p->y, r + 3, 0.28f, C_ORANGE);
-        if (p->level == 2) g->shake_t = g->shake_t > 0.12f ? g->shake_t : 0.12f;
+        burst(g, p->x, p->y, 44, C_ORANGE, C_YELLOW, 130, 0.55f);
+        burst(g, p->x, p->y, 18, C_RED, C_WHITE, 170, 0.4f);
+        burst(g, p->x, p->y, 18, C_DKSTONE, C_GRAY, 60, 0.7f);
+        add_ring(g, p->x, p->y, r + 4, 0.32f, C_ORANGE);
+        add_ring(g, p->x, p->y, r * 0.6f, 0.22f, C_YELLOW);
+        add_ring(g, p->x, p->y, r + 12, 0.45f, C_RED);
+        if (g->shake_t < (p->level == 2 ? 0.4f : 0.2f)) g->shake_t = (p->level == 2 ? 0.4f : 0.2f);
         sfx(g, SFX_EXPLODE);
     } else {
         float r = TW_SPLASH[TW_FROST][p->level];
@@ -1459,8 +1501,10 @@ static void hit_projectile(Game *g, Proj *p)
             }
         }
         if (tg) hurt_enemy(g, tg, p->dmg);
-        burst(g, p->x, p->y, 12, C_ICE, C_CYAN, 55, 0.4f);
-        add_ring(g, p->x, p->y, r, 0.3f, C_ICE);
+        burst(g, p->x, p->y, 30, C_ICE, C_CYAN, 105, 0.5f);
+        burst(g, p->x, p->y, 12, C_WHITE, C_ICE, 150, 0.35f);
+        add_ring(g, p->x, p->y, r, 0.34f, C_ICE);
+        add_ring(g, p->x, p->y, r * 0.55f, 0.22f, C_WHITE);
     }
     p->alive = 0;
 }
@@ -1483,8 +1527,12 @@ static void update_projectiles(Game *g, float dt)
             p->vy = dy / d * PROJ_SPEED[p->type];
             p->x += p->vx * dt; p->y += p->vy * dt;
             /* trails */
-            if (p->type == TW_CANNON && (g->frame & 1)) add_part(g, p->x, p->y, 0, -8, 0.22f, C_GRAY, 1);
-            else if (p->type == TW_FROST && (g->frame & 1)) add_part(g, p->x, p->y, 0, 0, 0.2f, (g->frame & 2) ? C_CYAN : C_ICE, 1);
+            for (int k = 0; k < 2; k++) {
+                float jx = (rndf(g) - 0.5f) * 40.0f, jy = (rndf(g) - 0.5f) * 40.0f;
+                if (p->type == TW_CANNON) add_part(g, p->x, p->y, jx, jy - 8, 0.3f, k ? C_ORANGE : (rnd(g) & 1 ? C_YELLOW : C_GRAY), 1 + (int)(rnd(g) & 1));
+                else if (p->type == TW_FROST) add_part(g, p->x, p->y, jx, jy, 0.35f, (rnd(g) & 1) ? C_CYAN : (k ? C_WHITE : C_ICE), 1);
+                else add_part(g, p->x, p->y, jx * 0.6f, jy * 0.6f, 0.18f, k ? C_YELLOW : C_WHITE, 1);
+            }
         }
     }
 }
@@ -1513,10 +1561,8 @@ static void update_fx(Game *g, float dt)
 static void sim_step(Game *g, float dt)
 {
     if (!g->wave_active) {
-        if (g->wave < g->nwaves) {
-            g->wave_timer -= dt;
-            if (g->wave_timer <= 0) start_wave(g);
-        }
+        g->wave_timer -= dt;
+        if (g->wave_timer <= 0) start_wave(g);
     } else if (g->spawn_i < g->spawn_n) {
         g->spawn_t -= dt;
         if (g->spawn_t <= 0) {
@@ -1530,15 +1576,10 @@ static void sim_step(Game *g, float dt)
         int bonus = 15 + 3 * g->wave;
         g->gold += bonus;
         char b[40];
-        if (g->wave >= g->nwaves) {
-            g->state = ST_WIN; g->state_t = 0;
-            sfx(g, SFX_WIN);
-        } else {
-            snprintf(b, sizeof b, "WAVE CLEAR! +%dG", bonus);
-            set_banner(g, b, C_LTGREEN);
-            g->wave_timer = 12.0f;
-            sfx(g, SFX_CLEAR);
-        }
+        snprintf(b, sizeof b, "WAVE CLEAR! +%dG", bonus);
+        set_banner(g, b, C_LTGREEN);
+        g->wave_timer = 12.0f;
+        sfx(g, SFX_CLEAR);
     }
     update_enemies(g, dt);
     if (g->state != ST_PLAY) return;
@@ -1559,7 +1600,7 @@ static void setup_level(Game *g, int lvl)
     path_init(lvl);
     decor_init(lvl);
     wind_init();
-    g->level = lvl; g->nwaves = LEVELS[lvl].nwaves;
+    g->level = lvl; g->nwaves = 0;                 /* 0 = endless */
     build_bg(g);
     g->strike_t = 30.0f; g->strike_amp = 0; g->thunder_pending = 0;
     g->wx = 0x7f4a7c15u ^ ((uint32_t)lvl * 0x9e3779b9u);
@@ -1645,10 +1686,12 @@ void game_update(Game *g, uint32_t held, uint32_t pressed, float dt)
         if (pressed & (BTN_A | BTN_PLUS)) game_start(g);
         return;
     case ST_PAUSE:
-        if (pressed & (BTN_UP | BTN_DOWN)) { g->pause_sel ^= 1; sfx(g, SFX_MOVE); }
+        if (pressed & BTN_UP)   { g->pause_sel = (g->pause_sel + 2) % 3; sfx(g, SFX_MOVE); }
+        if (pressed & BTN_DOWN) { g->pause_sel = (g->pause_sel + 1) % 3; sfx(g, SFX_MOVE); }
         if (pressed & BTN_PLUS) { g->state = ST_PLAY; sfx(g, SFX_PAUSE); }
         else if (pressed & BTN_A) {
-            if (g->pause_sel == 1) { level_pref = g->level; game_init(g); sfx(g, SFX_SELECT); }
+            if (g->pause_sel == 2) { level_pref = g->level; game_init(g); sfx(g, SFX_SELECT); }
+            else if (g->pause_sel == 1) { sound_on = !sound_on; sfx(g, SFX_SELECT); }   /* silent when switching off */
             else { g->state = ST_PLAY; sfx(g, SFX_PAUSE); }
         }
         return;
@@ -1678,7 +1721,7 @@ void game_update(Game *g, uint32_t held, uint32_t pressed, float dt)
     if (pressed & BTN_B) {
         if (g->towers[g->cy][g->cx].used) game_sell(g, g->cx, g->cy);
     }
-    if ((pressed & BTN_X) && !g->wave_active && g->wave < g->nwaves) {
+    if ((pressed & BTN_X) && !g->wave_active) {
         int bonus = (int)g->wave_timer;
         if (bonus > 0 && g->wave > 0) { g->gold += bonus; add_text(g, 160, 40, bonus); }
         g->wave_timer = 0;
@@ -1693,13 +1736,24 @@ void game_update(Game *g, uint32_t held, uint32_t pressed, float dt)
 /* ------------------------------------------------------------------ */
 static int tower_sprite(int type) { return S_T_ARROW + type; }
 
+/* the palette offset of whatever light the ground at this spot receives, so sprites pick up the glow too */
+static int ambient_at(const Game *g, int x, int y)
+{
+    if (g->level == 0) return 0;
+    y -= MAP_Y;
+    if (x < 0 || x >= SCREEN_W || y < 0 || y >= MAP_H * TILE) return 0;
+    return g->bg[y * SCREEN_W + x] & 0xE0;
+}
+
 static void draw_tower(uint8_t *fb, const Game *g, const Tower *t, int tx, int ty)
 {
     int x = tx * TILE, y = MAP_Y + ty * TILE;
     /* ground shadow: bottom edge + right side (light comes from the top-left) */
     for (int i = 1; i < 15; i++) shadow_px(fb, x + i, y + 15);
     for (int j = 9; j < 16; j++) { shadow_px(fb, x + 14, y + j); shadow_px(fb, x + 15, y + j); }
+    blit_add = ambient_at(g, x + 8, y + 12);
     blit(fb, &SPR[tower_sprite(t->type)], x, y, t->level == 0 ? M_NORMAL : (t->level == 1 ? M_TIER2 : M_TIER3));
+    blit_add = 0;
     int n = t->level + 1, start = 8 - (n * 3 - 1) / 2;
     for (int i = 0; i < n; i++) {
         rect(fb, x + start + i * 3, y + 14, 2, 2, C_YELLOW);
@@ -1738,7 +1792,9 @@ static void draw_enemy(uint8_t *fb, const Game *g, const Enemy *e)
     /* soft shadow (smaller and lighter for flyers, which hover above the ground) */
     int sy = (int)lrintf(e->y) + 5;
     shadow_ellipse(fb, (int)lrintf(e->x), sy + (e->type == EN_BAT ? 3 : 0), e->type == EN_BOSS ? 7 : (e->type == EN_BAT ? 3 : 5));
+    blit_add = ambient_at(g, x + 8, y + 12);
     blit(fb, &SPR[spr], x, y, mode);
+    blit_add = 0;
     if (e->hp < e->maxhp) {
         int w = e->type == EN_BOSS ? 16 : 10, bx = (int)lrintf(e->x) - w / 2, by = y - 2;
         int fillw = (int)(w * e->hp / e->maxhp + 0.5f);
@@ -1805,12 +1861,12 @@ static void draw_hud(uint8_t *fb, const Game *g)
     snprintf(b, sizeof b, "%d", g->gold);
     draw_text(fb, 47, 4, b, C_YELLOW, 1);
     /* wave */
-    if (g->level) snprintf(b, sizeof b, "L%d WAVE %d/%d", g->level + 1, g->wave < 1 ? 1 : g->wave, g->nwaves);
-    else          snprintf(b, sizeof b, "WAVE %d/%d", g->wave < 1 ? 1 : g->wave, g->nwaves);
+    if (g->level) snprintf(b, sizeof b, "L%d WAVE %d", g->level + 1, g->wave < 1 ? 1 : g->wave);
+    else          snprintf(b, sizeof b, "WAVE %d", g->wave < 1 ? 1 : g->wave);
     draw_text(fb, 84, 4, b, C_CYAN, 1);
     int ox = g->level ? 12 : 0;
     /* status */
-    if (!g->wave_active && g->wave < g->nwaves) {
+    if (!g->wave_active) {
         snprintf(b, sizeof b, "NEXT WAVE %d  X:CALL NOW", (int)ceilf(g->wave_timer));
         draw_text(fb, 130 + ox, 4, b, C_LTGREEN, 1);
     } else if (g->wave_active) {
@@ -1999,20 +2055,20 @@ static void draw_flicker_glows(uint8_t *fb, const Game *g)
         for (int tx = 0; tx < MAP_W; tx++) {
             int dc = decor_map[ty][tx], r, ramp = 1, oy = 9;
             uint32_t h = hash2(tx, ty, 91);
-            if (dc == D_LAMP) { r = 17; oy = 6; }
-            else if (dc == D_PUMPKIN) r = 11;
-            else if (dc == D_FLORA && !is_path[ty][tx]) { r = 9; ramp = 2; }
+            if (dc == D_LAMP) { r = 28; oy = 6; }
+            else if (dc == D_PUMPKIN) r = 19;
+            else if (dc == D_FLORA && !is_path[ty][tx]) { r = 14; ramp = 2; }
             else continue;
             float k = flick(f, h);
             if (dc == D_FLORA) k = 0.55f + 0.45f * trig_sin[(f * 4 + (int)(h % 1024)) & 1023];   /* plants pulse slowly */
-            int rr = (int)((float)r * (0.72f + 0.42f * k) + 0.5f);
+            int rr = (int)((float)r * (0.8f + 0.35f * k) + 0.5f);
             gl2(fb, tx * TILE + 8, MAP_Y + ty * TILE + oy, rr, ramp);
         }
     {
         int kx = LV->wp[LV->nwp - 1][0] * TILE + 8, ky = MAP_Y + LV->wp[LV->nwp - 1][1] * TILE + 8;
-        gl2(fb, kx, ky, (int)(24.0f * (0.78f + 0.36f * flick(f, 5))), 1);
+        gl2(fb, kx, ky, (int)(34.0f * (0.8f + 0.35f * flick(f, 5))), 1);
         int px0 = LV->wp[0][0] * TILE + 8, py0 = MAP_Y + LV->wp[0][1] * TILE + 8;
-        gl2(fb, px0, py0, (int)(22.0f * (0.8f + 0.3f * trig_sin[(f * 5) & 1023] * 0.5f + 0.15f)), 2);
+        gl2(fb, px0, py0, (int)(30.0f * (0.85f + 0.15f * trig_sin[(f * 5) & 1023])), 2);
     }
 }
 
@@ -2156,7 +2212,7 @@ static void draw_title(uint8_t *fb, const Game *g)
         int yo = (int)lrintf(sinf((float)g->frame * 0.08f + (float)(i + 5) * 0.7f) * 2.0f);
         draw_text_sh(fb, x2 + i * 20, 40 + yo, s, cols2[i], 5);
     }
-    draw_text_center(fb, 74, "4 LEVELS - 3 TOWERS - 1 KEEP", C_LIGHT, 1);
+    draw_text_center(fb, 74, "ENDLESS WAVES - HOW FAR CAN YOU GO?", C_LIGHT, 1);
     /* mascots: a tower on the left, the boss on the right */
     blit_scaled(fb, &SPR[S_T_ARROW], 36, 20, 3);
     blit_scaled(fb, &SPR[S_BOSS], 236, 20 + (int)((g->frame >> 4) & 1), 3);
@@ -2171,7 +2227,8 @@ static void draw_title(uint8_t *fb, const Game *g)
     draw_text_center(fb, 128, "D-PAD MOVE   A BUILD/UPGRADE   B SELL", C_LIGHT, 1);
     draw_text_center(fb, 138, "L/R CHANGE TOWER   X CALL WAVE   Y FAST", C_LIGHT, 1);
     draw_text_center(fb, 148, "+ PAUSE   - SCREEN MODE   HOME EXIT", C_LIGHT, 1);
-    draw_text_center(fb, 162, "CLASSIC CONTROLLER", C_CYAN, 1);
+    if (best_wave[g->level] > 0) { char bb[32]; snprintf(bb, sizeof bb, "BEST WAVE %d", best_wave[g->level]); draw_text_center(fb, 162, bb, C_YELLOW, 1); }
+    else draw_text_center(fb, 162, "CLASSIC CONTROLLER", C_CYAN, 1);
 }
 
 void game_render(const Game *g, uint8_t *fb)
@@ -2186,7 +2243,7 @@ void game_render(const Game *g, uint8_t *fb)
     draw_world(fb, g);
     if (g->state == ST_PLAY || g->state == ST_PAUSE) draw_cursor(fb, g);
     if (g->shake_t > 0) {
-        int amp = g->shake_t > 0.25f ? 2 : 1;
+        int amp = g->shake_t > 0.5f ? 4 : (g->shake_t > 0.25f ? 3 : (g->shake_t > 0.1f ? 2 : 1));
         int dx = (int)(hash2((int)g->frame, 1, 7) % (uint32_t)(2 * amp + 1)) - amp;
         int dy = (int)(hash2((int)g->frame, 2, 9) % (uint32_t)(2 * amp + 1)) - amp;
         shake_map(fb, dx, dy);
@@ -2201,11 +2258,18 @@ void game_render(const Game *g, uint8_t *fb)
     }
     if (g->state == ST_PAUSE) {
         darken(fb, 0, MAP_Y, SCREEN_W, MAP_H * TILE);
-        panel(fb, 80, 58, 160, 66, C_GRAY);
-        draw_text_center(fb, 65, "PAUSED", C_YELLOW, 3);
-        draw_text_center(fb, 91, g->pause_sel == 0 ? "> RESUME <" : "RESUME", g->pause_sel == 0 ? C_WHITE : C_LIGHT, 1);
-        draw_text_center(fb, 103, g->pause_sel == 1 ? "> QUIT TO TITLE <" : "QUIT TO TITLE", g->pause_sel == 1 ? C_WHITE : C_LIGHT, 1);
-        draw_text_center(fb, 114, "UP/DOWN + A", C_DKGRAY, 1);
+        panel(fb, 70, 50, 180, 80, C_GRAY);
+        draw_text_center(fb, 57, "PAUSED", C_YELLOW, 3);
+        char it[24];
+        for (int i = 0; i < 3; i++) {
+            if (i == 0) snprintf(it, sizeof it, "RESUME");
+            else if (i == 1) snprintf(it, sizeof it, "SOUND: %s", sound_on ? "ON" : "OFF");
+            else snprintf(it, sizeof it, "QUIT TO TITLE");
+            char line[32];
+            snprintf(line, sizeof line, g->pause_sel == i ? "> %s <" : "%s", it);
+            draw_text_center(fb, 83 + i * 12, line, g->pause_sel == i ? C_WHITE : C_LIGHT, 1);
+        }
+        draw_text_center(fb, 120, "UP/DOWN + A", C_DKGRAY, 1);
     } else if (g->state == ST_OVER || g->state == ST_WIN) {
         char b[48];
         int win = g->state == ST_WIN;
@@ -2215,7 +2279,8 @@ void game_render(const Game *g, uint8_t *fb)
         draw_text_center(fb, 58, more ? "LEVEL CLEAR!" : (win ? "YOU WIN!" : "GAME OVER"), win ? C_YELLOW : C_RED, more ? 3 : 4);
         snprintf(b, sizeof b, "WAVE %d   KILLS %d", g->wave, g->kills);
         draw_text_center(fb, 88, b, C_WHITE, 1);
-        draw_text_center(fb, 100, win ? "THE KEEP STANDS!" : "THE KEEP HAS FALLEN...", C_LIGHT, 1);
+        if (g->new_best) draw_text_center(fb, 100, "NEW BEST WAVE!", ((g->frame >> 3) & 1) ? C_YELLOW : C_ORANGE, 1);
+        else { snprintf(b, sizeof b, "BEST WAVE %d", best_wave[g->level]); draw_text_center(fb, 100, b, C_LIGHT, 1); }
         if (more) {
             snprintf(b, sizeof b, "NEXT: %s", LEVELS[g->level + 1].name);
             draw_text_center(fb, 110, b, C_LTGREEN, 1);

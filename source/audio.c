@@ -29,7 +29,7 @@ static const uint8_t VOL[SFX_COUNT] = {
     /* MOVE */ 70,  /* SELECT */ 100, /* BUILD */ 200, /* UPGRADE */ 170, /* SELL */ 150, /* ERROR */ 150,
     /* ARROW */ 100, /* CANNON */ 235, /* FROST */ 120, /* EXPLODE */ 235, /* KILL */ 110, /* LEAK */ 220,
     /* WAVE */ 190, /* BOSS */ 240, /* CLEAR */ 200, /* START */ 190, /* PAUSE */ 120, /* OVER */ 220,
-    /* WIN */ 220, /* THUNDER */ 235
+    /* WIN */ 220
 };
 
 /* ------------------------------------------------------------------ */
@@ -221,143 +221,126 @@ void audio_init(void)
     ready = 1;
     for (int i = 0; i <= TABN; i++) sine_tab[i] = sinf((float)i * 2.0f * (float)M_PI / (float)TABN);
 
-    /* Everything below is built from pure tones: sines, soft triangles and gentle FM. Drums and booms are
-       pitch-dropping sines, not noise, so nothing hisses. Only the thunder uses a deep, low-passed rumble. */
+    /* Sci-fi / laser style: fast pitch sweeps, FM "zaps" and bright synth pings, with a short space echo.
+       Everything is a clean tone (no noise layers), so nothing hisses. */
 
     /* --- interface --- */
-    begin();                                                         /* cursor: a tiny soft tick */
-    tone(0, 0.05f, 1400, 1100, 0.6f, 0.002f, 0.012f, W_SIN, 0, 0);
+    begin();                                                         /* cursor: a tiny blip */
+    tone(0, 0.05f, 1800, 2300, 0.6f, 0.002f, 0.014f, W_SIN, 0, 0);
     finish_fx(SFX_MOVE, 0.0f, 0.0f);
 
-    begin();                                                         /* select: two clean rising notes */
-    tone(0.00f, 0.15f, 880, 880, 0.5f, 0.004f, 0.045f, W_SIN, 0, 0);
-    tone(0.06f, 0.20f, 1319, 1319, 0.5f, 0.004f, 0.06f, W_SIN, 0, 0);
-    finish_fx(SFX_SELECT, 0.3f, 0.3f);
+    begin();                                                         /* select: bip-boop */
+    tone(0.00f, 0.08f, 900, 1200, 0.5f, 0.003f, 0.03f, W_SIN, 0, 0);
+    tone(0.07f, 0.16f, 1500, 1900, 0.5f, 0.003f, 0.05f, W_SIN, 0, 0);
+    finish_fx(SFX_SELECT, 0.4f, 0.3f);
 
-    begin();                                                         /* pause: a calm falling pair */
-    tone(0.00f, 0.16f, 784, 784, 0.5f, 0.004f, 0.06f, W_SIN, 0, 0);
-    tone(0.08f, 0.24f, 587, 587, 0.5f, 0.004f, 0.08f, W_SIN, 0, 0);
-    finish_fx(SFX_PAUSE, 0.3f, 0.3f);
+    begin();                                                         /* pause: a quick downward sweep */
+    tone(0, 0.22f, 1500, 500, 0.5f, 0.004f, 0.09f, W_SIN, 0, 0);
+    tone(0, 0.22f, 3000, 1000, 0.1f, 0.004f, 0.06f, W_SIN, 0, 0);
+    finish_fx(SFX_PAUSE, 0.4f, 0.3f);
 
-    begin();                                                         /* error: two low soft thuds */
-    tone(0.00f, 0.14f, 150, 110, 0.8f, 0.004f, 0.05f, W_SIN, 0, 0);
-    tone(0.11f, 0.20f, 125, 90, 0.8f, 0.004f, 0.07f, W_SIN, 0, 0);
-    tone(0.00f, 0.14f, 300, 220, 0.2f, 0.004f, 0.04f, W_TRI, 0, 0);
-    tone(0.11f, 0.20f, 250, 180, 0.2f, 0.004f, 0.05f, W_TRI, 0, 0);
+    begin();                                                         /* error: low "nope" */
+    tone(0.00f, 0.16f, 220, 120, 0.7f, 0.003f, 0.07f, W_FM, 1.0f, 1.8f);
+    tone(0.12f, 0.22f, 180, 80, 0.7f, 0.003f, 0.09f, W_FM, 1.0f, 1.8f);
     finish_fx(SFX_ERROR, 0.0f, 0.0f);
 
     /* --- building --- */
-    begin();                                                         /* build: a firm thunk and a bright chime */
-    tone(0, 0.16f, 160, 55, 0.9f, 0.002f, 0.05f, W_SIN, 0, 0);
-    bell(0.07f, 784.0f, 0.35f, 0.10f);
-    bell(0.13f, 1175.0f, 0.3f, 0.12f);
-    finish_fx(SFX_BUILD, 0.3f, 0.4f);
+    begin();                                                         /* build: power-up sweep + ping */
+    tone(0, 0.16f, 250, 1100, 0.55f, 0.004f, 0.07f, W_SIN, 0, 0);
+    tone(0, 0.16f, 125, 550, 0.35f, 0.004f, 0.07f, W_SIN, 0, 0);
+    bell(0.14f, 1568.0f, 0.4f, 0.10f);
+    finish_fx(SFX_BUILD, 0.4f, 0.4f);
 
-    begin();                                                         /* upgrade: rising sparkle */
-    bell(0.00f, C5, 0.4f, 0.12f);
-    bell(0.07f, E5, 0.4f, 0.12f);
-    bell(0.14f, G5, 0.4f, 0.12f);
-    bell(0.21f, C6, 0.45f, 0.18f);
-    tone(0.0f, 0.4f, C4, C4, 0.15f, 0.01f, 0.15f, W_SIN, 0, 0);
-    finish_fx(SFX_UPGRADE, 0.3f, 0.4f);
+    begin();                                                         /* upgrade: rising laser arpeggio */
+    for (int i = 0; i < 4; i++) {
+        static const float nf[4] = {C5, E5, G5, C6};
+        tone(0.07f * (float)i, 0.12f, nf[i] * 0.7f, nf[i] * 1.5f, 0.4f, 0.003f, 0.05f, W_FM, 1.0f, 1.2f);
+    }
+    bell(0.28f, C7, 0.3f, 0.2f);
+    finish_fx(SFX_UPGRADE, 0.4f, 0.5f);
 
-    begin();                                                         /* sell: two bright coin pings */
-    bell(0.00f, 1319.0f, 0.5f, 0.08f);
-    bell(0.07f, 1976.0f, 0.5f, 0.14f);
-    finish_fx(SFX_SELL, 0.3f, 0.3f);
+    begin();                                                         /* sell: coin zap */
+    tone(0.00f, 0.09f, 900, 2200, 0.5f, 0.002f, 0.04f, W_SIN, 0, 0);
+    tone(0.08f, 0.25f, 2600, 2600, 0.5f, 0.002f, 0.1f, W_FM, 1.0f, 1.4f);
+    finish_fx(SFX_SELL, 0.4f, 0.3f);
 
     /* --- combat --- */
-    begin();                                                         /* arrow: a quick airy pluck */
-    tone(0, 0.09f, 1300, 520, 0.5f, 0.002f, 0.022f, W_SIN, 0, 0);
-    tone(0, 0.07f, 2600, 1040, 0.12f, 0.002f, 0.015f, W_SIN, 0, 0);
-    finish_fx(SFX_ARROW, 0.0f, 0.0f);
+    begin();                                                         /* arrow: laser "pew" */
+    tone(0, 0.14f, 3000, 380, 0.55f, 0.001f, 0.06f, W_FM, 1.0f, 2.5f);
+    tone(0, 0.14f, 1500, 190, 0.25f, 0.001f, 0.05f, W_SIN, 0, 0);
+    finish_fx(SFX_ARROW, 0.25f, 0.2f);
 
-    begin();                                                         /* cannon: a deep boom */
-    tone(0, 0.55f, 120, 36, 1.0f, 0.002f, 0.16f, W_SIN, 0, 0);
-    tone(0, 0.18f, 260, 80, 0.5f, 0.002f, 0.05f, W_SIN, 0, 0);
-    tone(0, 0.30f, 70, 40, 0.5f, 0.002f, 0.10f, W_TRI, 0, 0);
-    finish_fx(SFX_CANNON, 0.25f, 0.4f);
+    begin();                                                         /* cannon: heavy plasma blast */
+    tone(0, 0.5f, 320, 38, 1.0f, 0.001f, 0.16f, W_SIN, 0, 0);
+    tone(0, 0.35f, 900, 70, 0.55f, 0.001f, 0.1f, W_FM, 1.0f, 4.0f);
+    tone(0, 0.25f, 2600, 300, 0.25f, 0.001f, 0.05f, W_FM, 1.0f, 2.5f);
+    finish_fx(SFX_CANNON, 0.35f, 0.5f);
 
-    begin();                                                         /* frost: glassy shimmer */
-    tone(0.00f, 0.8f, 1568, 1568, 0.3f, 0.004f, 0.18f, W_FM, 2.0f, 0.8f);
-    tone(0.04f, 0.8f, 2093, 2093, 0.25f, 0.004f, 0.18f, W_FM, 2.0f, 0.7f);
-    tone(0.08f, 0.9f, 2637, 2637, 0.22f, 0.004f, 0.2f, W_FM, 2.0f, 0.6f);
-    finish_fx(SFX_FROST, 0.35f, 0.6f);
+    begin();                                                         /* frost: icy rising ray */
+    tone(0.00f, 0.5f, 700, 3200, 0.3f, 0.01f, 0.25f, W_FM, 2.0f, 1.5f);
+    tone(0.00f, 0.5f, 710, 3240, 0.3f, 0.01f, 0.25f, W_SIN, 0, 0);
+    tone(0.10f, 0.7f, 2637, 2637, 0.2f, 0.004f, 0.2f, W_FM, 3.0f, 1.0f);
+    finish_fx(SFX_FROST, 0.45f, 0.6f);
 
-    begin();                                                         /* explosion: big falling thump + rumble */
-    tone(0, 0.8f, 100, 28, 1.0f, 0.002f, 0.22f, W_SIN, 0, 0);
-    tone(0, 0.3f, 220, 60, 0.6f, 0.002f, 0.07f, W_SIN, 0, 0);
-    noise(0, 0.8f, 380, 70, 0.6f, 0.9f, 0.002f, 0.2f, F_LP);
-    finish_fx(SFX_EXPLODE, 0.2f, 0.4f);
+    begin();                                                         /* explosion: big metallic space boom */
+    tone(0, 0.9f, 220, 24, 1.0f, 0.001f, 0.25f, W_SIN, 0, 0);
+    tone(0, 0.6f, 1400, 50, 0.6f, 0.001f, 0.15f, W_FM, 1.0f, 5.0f);
+    tone(0, 0.3f, 3200, 200, 0.3f, 0.001f, 0.06f, W_FM, 1.4f, 3.0f);
+    noise(0, 0.7f, 300, 60, 0.6f, 0.5f, 0.002f, 0.2f, F_LP);
+    finish_fx(SFX_EXPLODE, 0.35f, 0.6f);
 
-    begin();                                                         /* enemy popped: a round bloop */
-    tone(0, 0.12f, 700, 300, 0.7f, 0.002f, 0.035f, W_SIN, 0, 0);
-    tone(0, 0.08f, 1400, 600, 0.15f, 0.002f, 0.02f, W_SIN, 0, 0);
+    begin();                                                         /* enemy zapped: short descending zap + pop */
+    tone(0, 0.12f, 1800, 220, 0.5f, 0.001f, 0.04f, W_FM, 1.0f, 3.0f);
+    tone(0.03f, 0.1f, 400, 120, 0.5f, 0.001f, 0.03f, W_SIN, 0, 0);
     finish_fx(SFX_KILL, 0.0f, 0.0f);
 
-    begin();                                                         /* the keep is hit: a low sad "womp" */
-    tone(0, 0.5f, 196, 98, 0.7f, 0.004f, 0.2f, W_TRI, 0, 0);
-    tone(0, 0.5f, 98, 49, 0.6f, 0.004f, 0.2f, W_SIN, 0, 0);
-    finish_fx(SFX_LEAK, 0.25f, 0.4f);
+    begin();                                                         /* the keep is hit: warning siren drop */
+    tone(0.00f, 0.25f, 900, 450, 0.55f, 0.004f, 0.12f, W_FM, 1.0f, 2.0f);
+    tone(0.20f, 0.35f, 700, 250, 0.55f, 0.004f, 0.15f, W_FM, 1.0f, 2.0f);
+    tone(0, 0.5f, 70, 40, 0.6f, 0.003f, 0.2f, W_SIN, 0, 0);
+    finish_fx(SFX_LEAK, 0.35f, 0.4f);
 
     /* --- waves / game flow --- */
-    begin();                                                         /* wave horn: two warm notes */
-    tone(0.00f, 0.7f, G4, G4, 0.5f, 0.03f, 0.4f, W_TRI, 0, 0);
-    tone(0.00f, 0.7f, G4 * 2.0f, G4 * 2.0f, 0.12f, 0.03f, 0.3f, W_SIN, 0, 0);
-    tone(0.22f, 0.6f, C5, C5, 0.5f, 0.03f, 0.35f, W_TRI, 0, 0);
-    tone(0.22f, 0.6f, C5 * 2.0f, C5 * 2.0f, 0.12f, 0.03f, 0.25f, W_SIN, 0, 0);
-    tone(0.00f, 0.8f, 196, 196, 0.25f, 0.04f, 0.4f, W_SIN, 0, 0);
-    finish_fx(SFX_WAVE, 0.3f, 0.5f);
+    begin();                                                         /* wave start: rising sweep + synth chord */
+    tone(0.00f, 0.3f, 250, 700, 0.35f, 0.02f, 0.2f, W_SIN, 0, 0);
+    tone(0.28f, 0.6f, G4, G4, 0.35f, 0.01f, 0.3f, W_FM, 1.0f, 1.2f);
+    tone(0.28f, 0.6f, D5, D5, 0.3f, 0.01f, 0.3f, W_FM, 1.0f, 1.2f);
+    tone(0.28f, 0.6f, G5, G5, 0.25f, 0.01f, 0.3f, W_FM, 1.0f, 1.2f);
+    finish_fx(SFX_WAVE, 0.4f, 0.5f);
 
-    begin();                                                         /* boss: a dark, rising rumble */
-    tone(0, 1.2f, 55, 52, 0.7f, 0.08f, 0.7f, W_SIN, 0, 0);
-    tone(0, 1.2f, 110, 104, 0.4f, 0.1f, 0.7f, W_TRI, 0, 0);
-    tone(0, 1.2f, 116.5f, 110, 0.3f, 0.1f, 0.7f, W_TRI, 0, 0);
-    tone(0.5f, 0.6f, 82, 55, 0.6f, 0.004f, 0.22f, W_SIN, 0, 0);
-    finish_fx(SFX_BOSS, 0.25f, 0.5f);
+    begin();                                                         /* boss: deep warping alarm */
+    tone(0, 1.2f, 60, 45, 0.8f, 0.05f, 0.8f, W_FM, 1.0f, 3.0f);
+    tone(0.0f, 0.5f, 200, 600, 0.35f, 0.02f, 0.3f, W_FM, 1.0f, 2.0f);
+    tone(0.5f, 0.6f, 600, 150, 0.35f, 0.02f, 0.3f, W_FM, 1.0f, 2.0f);
+    tone(0.0f, 1.2f, 30, 28, 0.6f, 0.05f, 0.9f, W_SIN, 0, 0);
+    finish_fx(SFX_BOSS, 0.35f, 0.5f);
 
-    begin();                                                         /* wave clear: bright fanfare */
-    bell(0.00f, C5, 0.4f, 0.12f);
-    bell(0.10f, E5, 0.4f, 0.12f);
-    bell(0.20f, G5, 0.4f, 0.12f);
-    bell(0.30f, C6, 0.5f, 0.24f);
-    tone(0.30f, 0.7f, C5, C5, 0.2f, 0.02f, 0.35f, W_TRI, 0, 0);
-    finish_fx(SFX_CLEAR, 0.3f, 0.5f);
-
-    begin();                                                         /* new game */
-    bell(0.00f, G4, 0.4f, 0.10f);
-    bell(0.08f, C5, 0.4f, 0.10f);
-    bell(0.16f, E5, 0.4f, 0.10f);
-    bell(0.24f, G5, 0.5f, 0.26f);
-    tone(0.24f, 0.6f, C5, C5, 0.18f, 0.02f, 0.3f, W_TRI, 0, 0);
-    finish_fx(SFX_START, 0.3f, 0.5f);
-
-    begin();                                                         /* game over: a slow, sad descent */
-    static const float over_f[4] = {G4, F4, EB4, C4};
-    for (int i = 0; i < 4; i++) {
-        float t = 0.24f * (float)i, f = over_f[i], ln = (i == 3) ? 0.9f : 0.34f, tau = i == 3 ? 0.5f : 0.2f;
-        tone(t, ln, f, f * 0.985f, 0.5f, 0.012f, tau, W_TRI, 0, 0);
-        tone(t, ln, f * 0.5f, f * 0.5f * 0.985f, 0.35f, 0.012f, tau, W_SIN, 0, 0);
+    begin();                                                         /* wave clear: bright synth arpeggio */
+    for (int i = 0; i < 5; i++) {
+        static const float nf[5] = {C5, E5, G5, C6, E6};
+        tone(0.07f * (float)i, 0.2f, nf[i], nf[i], 0.35f, 0.003f, 0.1f, W_FM, 2.0f, 1.0f);
     }
-    finish_fx(SFX_OVER, 0.3f, 0.5f);
+    bell(0.35f, G6, 0.3f, 0.25f);
+    finish_fx(SFX_CLEAR, 0.45f, 0.5f);
 
-    begin();                                                         /* victory */
-    bell(0.00f, C5, 0.4f, 0.10f);
-    bell(0.11f, C5, 0.4f, 0.10f);
-    bell(0.22f, C5, 0.4f, 0.10f);
-    bell(0.33f, E5, 0.45f, 0.16f);
-    bell(0.58f, D5, 0.4f, 0.10f);
-    bell(0.70f, G5, 0.5f, 0.28f);
-    bell(0.70f, C6, 0.3f, 0.28f);
-    tone(0.70f, 0.9f, C5, C5, 0.18f, 0.03f, 0.45f, W_TRI, 0, 0);
-    tone(0.70f, 0.9f, E5, E5, 0.14f, 0.03f, 0.45f, W_TRI, 0, 0);
-    finish_fx(SFX_WIN, 0.3f, 0.5f);
+    begin();                                                         /* new game: warp-up */
+    tone(0.00f, 0.35f, 150, 1500, 0.4f, 0.01f, 0.2f, W_FM, 1.0f, 1.5f);
+    tone(0.30f, 0.5f, C5, C5, 0.3f, 0.01f, 0.25f, W_FM, 2.0f, 1.0f);
+    tone(0.30f, 0.5f, G5, G5, 0.25f, 0.01f, 0.25f, W_FM, 2.0f, 1.0f);
+    tone(0.30f, 0.5f, C6, C6, 0.2f, 0.01f, 0.25f, W_FM, 2.0f, 1.0f);
+    finish_fx(SFX_START, 0.4f, 0.5f);
 
-    begin();                                                         /* thunder: deep rolling rumble, no hiss */
-    noise(0, 1.8f, 240, 50, 0.7f, 1.0f, 0.04f, 0.75f, F_LP);
-    noise(0.3f, 1.4f, 160, 45, 0.9f, 0.7f, 0.2f, 0.5f, F_LP);
-    tone(0.02f, 1.6f, 48, 30, 0.9f, 0.05f, 0.8f, W_SIN, 0, 0);
-    finish_fx(SFX_THUNDER, 0.2f, 0.6f);
+    begin();                                                         /* game over: long power-down */
+    tone(0, 1.3f, 700, 35, 0.6f, 0.01f, 0.7f, W_FM, 1.0f, 2.5f);
+    tone(0, 1.3f, 350, 30, 0.5f, 0.01f, 0.7f, W_SIN, 0, 0);
+    finish_fx(SFX_OVER, 0.4f, 0.5f);
+
+    begin();                                                         /* victory arpeggio (unused in endless mode) */
+    for (int i = 0; i < 6; i++) {
+        static const float nf[6] = {C5, E5, G5, C6, E6, G6};
+        tone(0.08f * (float)i, 0.25f, nf[i], nf[i], 0.35f, 0.003f, 0.12f, W_FM, 2.0f, 1.0f);
+    }
+    finish_fx(SFX_WIN, 0.45f, 0.5f);
 }
 
 const int16_t *audio_data(int id) { return SFX[id]; }

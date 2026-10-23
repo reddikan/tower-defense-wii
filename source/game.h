@@ -19,13 +19,13 @@
 #define MAP_W      20
 #define MAP_H      10
 #define MAP_Y      20           /* map starts below the 20px HUD */
-#define NUM_WAVES  20           /* most waves any level has */
+#define NUM_WAVES  20           /* longest hand-made wave table; every level then continues endlessly */
 #define NUM_LEVELS 4
-#define PAL_N      96           /* 32 base colours + 32 warm-lit + 32 cool-lit (glow) */
+#define PAL_N      160          /* 32 base + 32 warm-lit + 32 cool-lit + 32 faint warm + 32 faint cool (ambient glow) */
 
 #define MAX_ENEMIES 160
 #define MAX_PROJ    160
-#define MAX_PART    300
+#define MAX_PART    800
 #define MAX_TEXT    24
 #define MAX_RING    24
 
@@ -100,7 +100,8 @@ typedef struct {
     char  msg[40];    float msg_t;
     char  banner[40]; float banner_t; int banner_col;
     float hurt_t, shake_t, fade;
-    int   pause_sel;                 /* pause menu: 0 = resume, 1 = quit to title */
+    int   new_best;                  /* this run set a new best wave */
+    int   pause_sel;                 /* pause menu: 0 = resume, 1 = sound on/off, 2 = quit to title */
 
     /* storm weather (levels 2-4): lightning timeline and a private RNG so gameplay is unaffected */
     float    strike_t, strike_amp, bolt_cd, thunder_t;
@@ -123,6 +124,8 @@ const char *game_level_name(int level);
 void game_init(Game *g);                       /* title screen state */
 void game_start(Game *g);                      /* begin a new run on the selected level */
 void game_start_level(Game *g, int level);     /* begin a run on a specific level (0-based) */
+int  game_best_wave(int level);                /* best wave reached on a level this session */
+int  game_sound_on(void);
 void game_update(Game *g, uint32_t held, uint32_t pressed, float dt);
 void game_render(const Game *g, uint8_t *fb);  /* fb = SCREEN_W*SCREEN_H bytes */
 int  game_pop_sound(Game *g);                  /* next SFX_* id to play, or -1 */

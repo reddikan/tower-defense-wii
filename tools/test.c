@@ -146,13 +146,13 @@ static Result run_bot(const char *label, int level, int aggression, int dump_sho
     long f = 0;
     int shot_wave = 0;
     int peak_per_sec = 0, sec_events = 0;
-    while (g.state == ST_PLAY && f < 60L * 60 * 40) {
+    while (g.state == ST_PLAY && g.wave < 26 && f < 60L * 60 * 40) {      /* endless: stop once wave 25 is reached */
         frame(&g, 0, 0);
         f++;
         { int before = sfx_total_events; drain(&g); sec_events += sfx_total_events - before; }
         if (f % 60 == 0) { if (sec_events > peak_per_sec) peak_per_sec = sec_events; sec_events = 0; }
         if (!idle && f % 20 == 0) { if (aggression == 99) smart_act(&g); else bot_act(&g, aggression); }
-        if (dump_shots && g.wave_active && g.wave != shot_wave && (g.wave == 3 || g.wave == 10 || g.wave == 15 || g.wave == 20 || g.wave == g.nwaves)) {
+        if (dump_shots && g.wave_active && g.wave != shot_wave && (g.wave == 3 || g.wave == 10 || g.wave == 15 || g.wave == 20)) {
             /* wait ~14s into the wave so there is action on screen */
             for (int i = 0; i < 60 * 14 && g.state == ST_PLAY; i++) { frame(&g, 0, 0); f++; if (f % 20 == 0) { if (aggression == 99) smart_act(&g); else bot_act(&g, aggression); } }
             char name[64]; snprintf(name, sizeof name, "%s_wave%d", label, g.wave);
@@ -160,15 +160,15 @@ static Result run_bot(const char *label, int level, int aggression, int dump_sho
             shot_wave = g.wave;
         }
     }
-    Result r = {g.wave, g.lives, g.kills, g.state == ST_WIN, (float)f / 60.0f};
+    Result r = {g.wave, g.lives, g.kills, g.wave >= 26, (float)f / 60.0f};
     if (dump_shots) {
         for (int i = 0; i < 90; i++) frame(&g, 0, 0);
         game_render(&g, fb);
         char name[64]; snprintf(name, sizeof name, "%s_end", label);
         dump(&g, fb, name);
     }
-    printf("  %-22s wave %2d/%d  lives %2d  kills %3d  %s  (%.0f s game time, busiest second: %d sound events)\n", label, r.wave, g.nwaves, r.lives, r.kills,
-           r.won ? "WON " : "LOST", r.seconds, peak_per_sec);
+    printf("  %-22s wave %2d  lives %2d  kills %3d  %s  (%.0f s game time, busiest second: %d sound events)\n", label, r.wave, r.lives, r.kills,
+           r.won ? "SURVIVED 25" : "LOST", r.seconds, peak_per_sec);
     return r;
 }
 
@@ -254,8 +254,8 @@ int main(int argc, char **argv)
     frame(&g, BTN_PLUS, BTN_PLUS);
     CHECK(g.state == ST_PLAY, "+ resumes");
     frame(&g, BTN_PLUS, BTN_PLUS);
-    frame(&g, BTN_DOWN, BTN_DOWN);
-    CHECK(g.state == ST_PAUSE && g.pause_sel == 1, "pause menu: down selects quit");
+    frame(&g, BTN_DOWN, BTN_DOWN); frame(&g, BTN_DOWN, BTN_DOWN);
+    CHECK(g.state == ST_PAUSE && g.pause_sel == 2, "pause menu: down twice selects quit");
     game_render(&g, fb); dump(&g, fb, "pause_quit");
     frame(&g, BTN_A, BTN_A);
     CHECK(g.state == ST_TITLE, "quit from the pause menu returns to the title screen");
@@ -312,25 +312,24 @@ levels:
     for (int lv = 1; lv < NUM_LEVELS; lv++) {
         char name[64], msg[96];
         game_init(&g); game_start_level(&g, lv);
-        snprintf(msg, sizeof msg, "level %d \"%s\": %d waves, path %.0f px", lv + 1, game_level_name(lv), g.nwaves, game_path_length());
-        CHECK(g.state == ST_PLAY && g.level == lv && g.nwaves >= 15, msg);
+        snprintf(msg, sizeof msg, "level %d \"%s\": endless, path %.0f px", lv + 1, game_level_name(lv), game_path_length());
+        CHECK(g.state == ST_PLAY && g.level == lv, msg);
         int free_tiles = 0;
         for (int y = 0; y < MAP_H; y++) for (int x = 0; x < MAP_W; x++) free_tiles += game_is_buildable(&g, x, y);
         snprintf(msg, sizeof msg, "level %d has plenty of room to build (%d free tiles)", lv + 1, free_tiles);
         CHECK(free_tiles >= 90, msg);
         /* weather: rain + lightning + thunder run on their own; a strike changes the palette */
-        int thunder = 0;
         uint8_t pal0[PAL_N][3], pal1[PAL_N][3];
         game_get_palette(&g, pal0);
         int flashed = 0;
         for (int i = 0; i < 60 * 30; i++) {
             frame(&g, 0, 0);
-            int id; while ((id = game_pop_sound(&g)) >= 0) thunder += id == SFX_THUNDER;
+            drain(&g);
             game_get_palette(&g, pal1);
             if (memcmp(pal0, pal1, sizeof pal0)) flashed = 1;
         }
-        snprintf(msg, sizeof msg, "level %d: lightning flashes the palette and thunder follows (%d claps in 30 s)", lv + 1, thunder);
-        CHECK(flashed && thunder > 0, msg);
+        snprintf(msg, sizeof msg, "level %d: lightning flashes the palette (silently)", lv + 1);
+        CHECK(flashed, msg);
         /* scene: let the bot dig in for a while, then take screenshots (calm, bolt, mid-flash) */
         game_start_level(&g, lv);
         for (int i = 0; i < 60 * 80 && g.state == ST_PLAY; i++) {
@@ -371,17 +370,34 @@ levels:
     frame(&g, BTN_A, BTN_A);
     CHECK(g.state == ST_PLAY && g.level == NUM_LEVELS - 1, "A starts the chosen level");
 
-    printf("[6] level progression + bot playthroughs\n");
+    printf("[6] endless waves, best wave, sound switch + bot playthroughs\n");
     {
         game_init(&g); game_start_level(&g, 0);
-        g.wave = g.nwaves - 1; g.wave_active = 1; g.spawn_i = g.spawn_n = 0;     /* about to finish level 1 */
-        g.wave = g.nwaves;
-        for (int i = 0; i < 5; i++) frame(&g, 0, 0);
-        CHECK(g.state == ST_WIN, "clearing the last wave wins the level");
+        g.wave = 39; g.wave_active = 0; g.wave_timer = 0;
+        frame(&g, 0, 0);
+        CHECK(g.state == ST_PLAY && g.wave == 40 && g.spawn_n > 100, "waves continue past the hand-made tables (wave 40 has a big crowd)");
+        g.wave = 44; g.wave_active = 0; g.wave_timer = 0; frame(&g, 0, 0);
+        CHECK(g.wave == 45 && g.spawn_n <= 256, "wave 45 (a boss wave) still fits the spawn queue");
+        game_init(&g); game_start_level(&g, 2);
+        for (int i = 0; i < 60 * 200 && g.state == ST_PLAY; i++) frame(&g, 0, 0);
+        CHECK(g.state == ST_OVER && game_best_wave(2) >= 1 && g.new_best, "losing records a new best wave");
         for (int i = 0; i < 90; i++) frame(&g, 0, 0);
-        game_render(&g, fb); dump(&g, fb, "level_clear");
+        game_render(&g, fb); dump(&g, fb, "game_over");
+        /* sound switch in the pause menu */
+        game_init(&g); frame(&g, BTN_A, BTN_A); drain(&g);
+        frame(&g, BTN_PLUS, BTN_PLUS);
+        frame(&g, BTN_DOWN, BTN_DOWN);
+        CHECK(g.pause_sel == 1, "pause menu: second item is the sound switch");
         frame(&g, BTN_A, BTN_A);
-        CHECK(g.state == ST_PLAY && g.level == 1 && g.wave == 0 && g.lives == 20, "A after a win starts the next level fresh");
+        CHECK(!game_sound_on(), "A on SOUND turns sound effects off");
+        drain(&g);
+        frame(&g, BTN_PLUS, BTN_PLUS); frame(&g, 0, BTN_A);
+        int before = sfx_total_events;
+        g.gold = 500; g.cx = 6; g.cy = 5;
+        frame(&g, BTN_A, BTN_A); frame(&g, BTN_L, BTN_L); frame(&g, BTN_R, BTN_R); drain(&g);
+        CHECK(sfx_total_events == before, "no sound events at all while sound is off");
+        frame(&g, BTN_PLUS, BTN_PLUS); frame(&g, BTN_DOWN, BTN_DOWN); frame(&g, BTN_A, BTN_A);
+        CHECK(game_sound_on(), "A on SOUND again turns it back on");
     }
     for (int lv = 1; lv < NUM_LEVELS; lv++) {
         char lab[48];
@@ -391,7 +407,7 @@ levels:
         snprintf(lab, sizeof lab, "L%d careful player", lv + 1); run_bot(lab, lv, 99, 0, 0);
         snprintf(lab, sizeof lab, "L%d idle", lv + 1);
         Result idle2 = run_bot(lab, lv, 0, 0, 1);
-        CHECK(!idle2.won, "doing nothing never wins a storm level");
+        CHECK(!idle2.won, "doing nothing never gets far on a storm level");
     }
 
     printf("\n%s (%d failures)\n", failures ? "TESTS FAILED" : "ALL CHECKS PASSED", failures);

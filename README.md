@@ -1,16 +1,18 @@
 # TOWER DEFENSE  (Wii homebrew)
 
 A retro, top-down, colourful tower defense game for the Nintendo Wii, played with the
+
+**Endless:** every level keeps sending bigger waves until the keep falls - how far can you get? Your best wave per level is shown on the title screen (kept until you close the game).
 **Wii Classic Controller** (no motion controls). 16:9, 60 fps, retro-style graphics and clean, modern-sounding sound effects.
 Build **arrow**, **cannon** and **frost** towers along the road and stop slimes, bats, golems and bosses
 from reaching your keep. There are **4 levels**:
 
-1. **Green Meadow** - the sunny classic, 20 waves
-2. **Stormy Moor** - dark, rainy slate-blue moorland with lightning, 15 waves
-3. **Haunted Marsh** - a glowing green graveyard bog with a zig-zag road, 15 waves
-4. **Thunder Peak** - violet rock and crystals under a thunderstorm, 18 waves
+1. **Green Meadow** - the sunny classic
+2. **Stormy Moor** - dark, rainy slate-blue moorland with lightning
+3. **Haunted Marsh** - a glowing green graveyard bog with a zig-zag road
+4. **Thunder Peak** - violet rock and crystals under a thunderstorm
 
-The three storm levels have rain, lightning flashes with thunder, and glowing lamps, plants, portal, keep
+The three storm levels have rain, silent lightning flashes, and glowing lamps, plants, portal, keep
 and shots. Clearing a level takes you to the next one with fresh gold and lives. On the title screen press
 **left/right** on the D-pad to jump straight to any level.
 
@@ -24,12 +26,12 @@ and shots. Clearing a level takes you to the next one with fresh gold and lives.
 | L / R (or ZL / ZR) | change the selected tower type |
 | X | call the next wave early (bonus gold for the time saved) |
 | Y | fast-forward on/off |
-| + | pause menu (Up/Down + A: resume or quit to title) |
+| + | pause menu (Up/Down + A: resume, sound on/off, quit to title) |
 | - | switch screen mode: the game starts filling a 16:9 screen; press - for a letterboxed picture on a 4:3 TV |
 | HOME | quit |
 
 Tips: cannons only hit ground enemies (bats fly), frost slows everything it touches, towers go up to
-level 3 (blue trim at level 2, gold at level 3), and bosses arrive on waves 10, 15, 18 and 20 in level 1 (earlier and more often in the later levels).
+level 3 (blue trim at level 2, gold at level 3), and bosses arrive every few waves.
 
 ## Build it  (needs devkitPro)
 
@@ -70,7 +72,7 @@ It also runs on a real Wii via the Homebrew Channel: copy `boot.dol` and `meta.x
 `make test` (or `sh tools/run_tests.sh`) builds the game core natively and runs a harness that drives it with
 simulated controller input: movement/auto-repeat, build/upgrade/sell, can't-build rules, pause, the sound
 event for every action, every level played by several bots (to tune the difficulty), a do-nothing run
-that must lose, the storm weather (lightning, thunder, palette flashes), level progression, and screenshot dumps (`tools/out/*.png`). It also writes every sound effect as a WAV file
+that must lose, the storm weather (lightning and palette flashes), endless waves and best-wave tracking, and screenshot dumps (`tools/out/*.png`). It also writes every sound effect as a WAV file
 in `tools/out/sounds/` so you can listen to them.
 
 ## Layout
