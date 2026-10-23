@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<app version="1">
+  <name>Tower Defense</name>
+  <coder>Claude</coder>
+  <version>1.0</version>
+  <release_date>20261022000000</release_date>
+  <short_description>Retro top-down tower defense (Classic Controller)</short_description>
+  <long_description>Build arrow, cannon and frost towers along the road and stop 20 waves of slimes, bats, golems and bosses from reaching your keep.
+
+Controls (Classic Controller):
+D-Pad: move cursor
+A: build / upgrade
+B: sell
+L / R: change tower
+X: call next wave
+Y: fast forward
++: pause
+-: toggle 16:9 / 4:3 screen mode
+HOME: exit</long_description>
+</app>
