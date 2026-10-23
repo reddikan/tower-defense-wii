@@ -14,6 +14,7 @@
 
 #include <gccore.h>
 #include <ogc/conf.h>
+#include <ogc/lwp_watchdog.h>
 #include <wiiuse/wpad.h>
 #include <asndlib.h>
 
