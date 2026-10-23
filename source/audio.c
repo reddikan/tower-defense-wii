@@ -24,7 +24,7 @@ static const uint8_t VOL[SFX_COUNT] = {
     /* MOVE */ 60,  /* SELECT */ 80, /* BUILD */ 200, /* UPGRADE */ 170, /* SELL */ 150, /* ERROR */ 150,
     /* ARROW */ 85, /* CANNON */ 230, /* FROST */ 110, /* EXPLODE */ 230, /* KILL */ 100, /* LEAK */ 220,
     /* WAVE */ 190, /* BOSS */ 240, /* CLEAR */ 200, /* START */ 190, /* PAUSE */ 120, /* OVER */ 220,
-    /* WIN */ 220
+    /* WIN */ 220, /* THUNDER */ 235
 };
 
 enum { W_SQ, W_TRI, W_SAW, W_SIN, W_NOISE };
@@ -198,6 +198,12 @@ void audio_init(void)
     note(0.72f, 0.36f, 784, 784, 0.5f, W_SQ, 0.5f, 1.4f);
     note(0.72f, 0.36f, 392, 392, 0.3f, W_TRI, 0.5f, 1.4f);
     finish(SFX_WIN);
+    begin();                                                         /* thunder: crack, then a long low rumble */
+    note(0.00f, 0.06f, 7000, 900, 0.9f, W_NOISE, 0.5f, 1.2f);
+    note(0.00f, 1.05f, 700, 90, 0.8f, W_NOISE, 0.5f, 1.1f);
+    note(0.05f, 1.00f, 70, 34, 0.9f, W_SIN, 0.5f, 1.0f);
+    note(0.30f, 0.75f, 420, 70, 0.45f, W_NOISE, 0.5f, 1.4f);
+    finish(SFX_THUNDER);
 }
 
 const int16_t *audio_data(int id) { return SFX[id]; }

@@ -21,7 +21,7 @@ static double now_ms(void)
     return t.tv_sec * 1000.0 + t.tv_nsec / 1e6;
 }
 
-static uint32_t pal_yuy2[32];
+static uint32_t pal_yuy2[128];
 static uint32_t xfb[320 * 480];          /* 640x480 YUY2 */
 static uint32_t linebuf[512];
 
@@ -45,7 +45,7 @@ static void present(const uint8_t *src)
         int sr = y * SCREEN_H / H;
         if (sr != last) {
             const uint8_t *s = src + sr * SCREEN_W;
-            for (int i = 0; i < words; i++) linebuf[i] = pal_yuy2[s[i * SCREEN_W / words] & 31];
+            for (int i = 0; i < words; i++) linebuf[i] = pal_yuy2[s[i * SCREEN_W / words] & 127];
             last = sr;
         }
         memcpy(row, linebuf, (size_t)words * 4);
@@ -68,22 +68,23 @@ int main(void)
     static uint8_t fb[SCREEN_W * SCREEN_H];
     for (int i = 0; i < 32; i++) pal_yuy2[i] = rgb_to_yuy2(game_palette[i][0], game_palette[i][1], game_palette[i][2]);
 
-    static const char *names[3] = {
+    static const char *names[4] = {
         "A) whole map full of level-3 towers (143), wave 20",
         "B) crowded: only 18 level-1 towers, so ~50 enemies pile up on screen, wave 20",
-        "C) same as B but in fast-forward (2 simulation steps per frame)"
+        "C) same as B but in fast-forward (2 simulation steps per frame)",
+        "D) storm level 4 (rain, lightning, glow) with 143 level-3 towers, wave 18"
     };
-    for (int pass = 0; pass < 3; pass++) {
+    for (int pass = 0; pass < 4; pass++) {
         game_init(&g);
-        game_update(&g, BTN_A, BTN_A, 1.0f / 60.0f);
+        game_start_level(&g, pass == 3 ? 3 : 0);
         g.gold = 1000000;
-        int n = 0, want = pass == 0 ? 1000 : 18;
+        int n = 0, want = (pass == 0 || pass == 3) ? 1000 : 18;
         for (int y = 0; y < MAP_H && n < want; y++) for (int x = 0; x < MAP_W && n < want; x++)
             if (game_is_buildable(&g, x, y)) {
                 game_build(&g, x, y, n % 3); n++;
-                if (pass == 0) { game_upgrade(&g, x, y); game_upgrade(&g, x, y); }
+                if (pass == 0 || pass == 3) { game_upgrade(&g, x, y); game_upgrade(&g, x, y); }
             }
-        g.lives = 1000000; g.wave = 19; g.wave_timer = 0.1f; g.fast = (pass == 2);
+        g.lives = 1000000; g.wave = pass == 3 ? 17 : 19; g.wave_timer = 0.1f; g.fast = (pass == 2);
         printf("%s\n", names[pass]);
 
         enum { WARM = 120, N = 60 * 40 };

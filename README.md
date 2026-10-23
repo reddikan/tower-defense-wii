@@ -2,14 +2,23 @@
 
 A retro, top-down, colourful tower defense game for the Nintendo Wii, played with the
 **Wii Classic Controller** (no motion controls). 16:9, 60 fps, 8-bit style graphics and sound effects.
-Build **arrow**, **cannon** and **frost** towers along the road and stop **20 waves** of slimes, bats,
-golems and bosses from reaching your keep.
+Build **arrow**, **cannon** and **frost** towers along the road and stop slimes, bats, golems and bosses
+from reaching your keep. There are **4 levels**:
+
+1. **Green Meadow** - the sunny classic, 20 waves
+2. **Stormy Moor** - dark, rainy slate-blue moorland with lightning, 15 waves
+3. **Haunted Marsh** - a glowing green graveyard bog with a zig-zag road, 15 waves
+4. **Thunder Peak** - violet rock and crystals under a thunderstorm, 18 waves
+
+The three storm levels have rain, lightning flashes with thunder, and glowing lamps, plants, portal, keep
+and shots. Clearing a level takes you to the next one with fresh gold and lives. On the title screen press
+**left/right** on the D-pad to jump straight to any level.
 
 ## Controls (Classic Controller)
 
 | Button | Action |
 |---|---|
-| D-Pad | move the cursor (hold to repeat) |
+| D-Pad | move the cursor (hold to repeat); on the title screen, left/right picks the level |
 | A | build the selected tower / upgrade the tower under the cursor |
 | B | sell the tower under the cursor (70% refund) |
 | L / R (or ZL / ZR) | change the selected tower type |
@@ -20,7 +29,7 @@ golems and bosses from reaching your keep.
 | HOME | quit |
 
 Tips: cannons only hit ground enemies (bats fly), frost slows everything it touches, towers go up to
-level 3 (blue trim at level 2, gold at level 3), and bosses arrive on waves 10, 15, 18 and 20.
+level 3 (blue trim at level 2, gold at level 3), and bosses arrive on waves 10, 15, 18 and 20 in level 1 (earlier and more often in the later levels).
 
 ## Build it  (needs devkitPro)
 
@@ -51,8 +60,8 @@ It also runs on a real Wii via the Homebrew Channel: copy `boot.dol` and `meta.x
 
 * The game simulates in fixed 1/60 s steps and is locked to the console's vertical sync. If a frame is ever
   late it catches up so the game never slows down. On PAL consoles it switches to PAL60 so it is still 60 Hz.
-* Worst-case frame cost (143 fully upgraded towers, wave 20, 300 particles, enemies piled up) measured on a PC:
-  about **0.13-0.26 ms** (typical to 99th percentile) of the 16.7 ms frame budget. The Wii's CPU is much slower
+* Worst-case frame cost (143 fully upgraded towers, 300 particles, enemies piled up, and the storm levels'
+  rain/lightning/glow) measured on a PC: about **0.1-0.2 ms** (typical to 99th percentile) of the 16.7 ms frame budget. The Wii's CPU is much slower
   than a PC, but even at 30x slower that leaves most of the frame free. Run `tools/bench.c` yourself:
   `cc -O2 -std=c99 source/game.c source/audio.c tools/bench.c -lm -o bench && ./bench`
 
@@ -60,14 +69,14 @@ It also runs on a real Wii via the Homebrew Channel: copy `boot.dol` and `meta.x
 
 `make test` (or `sh tools/run_tests.sh`) builds the game core natively and runs a harness that drives it with
 simulated controller input: movement/auto-repeat, build/upgrade/sell, can't-build rules, pause, the sound
-event for every action, all 20 waves played by three different bots (to tune the difficulty), a do-nothing run
-that must lose, and screenshot dumps (`tools/out/*.png`). It also writes every sound effect as a WAV file
+event for every action, every level played by several bots (to tune the difficulty), a do-nothing run
+that must lose, the storm weather (lightning, thunder, palette flashes), level progression, and screenshot dumps (`tools/out/*.png`). It also writes every sound effect as a WAV file
 in `tools/out/sounds/` so you can listen to them.
 
 ## Layout
 
 ```
-source/game.c, game.h   game rules + software renderer (plain C99, 320x180 palette framebuffer)
+source/game.c, game.h   game rules + software renderer (plain C99, 320x180 palette framebuffer; 4 levels)
 source/audio.c, audio.h synthesized sound effects (no audio files needed)
 source/main.c           the only Wii-specific file: video (YUY2 XFB), Classic Controller, ASND audio
 tools/                  native tests, benchmark, PNG/WAV export

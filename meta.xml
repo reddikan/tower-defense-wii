@@ -5,10 +5,10 @@
   <version>1.0</version>
   <release_date>20261022000000</release_date>
   <short_description>Retro top-down tower defense (Classic Controller)</short_description>
-  <long_description>Build arrow, cannon and frost towers along the road and stop 20 waves of slimes, bats, golems and bosses from reaching your keep.
+  <long_description>Build arrow, cannon and frost towers along the road and stop waves of slimes, bats, golems and bosses across 4 levels, including 3 dark thunderstorm levels.
 
 Controls (Classic Controller):
-D-Pad: move cursor
+D-Pad: move cursor (left/right on the title screen picks the level)
 A: build / upgrade
 B: sell
 L / R: change tower

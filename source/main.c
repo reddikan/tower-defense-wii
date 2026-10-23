@@ -55,7 +55,7 @@ static volatile int quit;
 
 static Game    game;
 static uint8_t fb[SCREEN_W * SCREEN_H];
-static u32     pal_yuy2[32];
+static u32     pal_yuy2[128];      /* PAL_N used; the rest stay black */
 static u32     black_yuy2;
 static u32     linebuf[512];
 
@@ -71,6 +71,14 @@ static u32 rgb_to_yuy2(int r, int g, int b)
     cb = cb > 255 ? 255 : (cb < 0 ? 0 : cb);
     cr = cr > 255 ? 255 : (cr < 0 ? 0 : cr);
     return ((u32)y << 24) | ((u32)cb << 16) | ((u32)y << 8) | (u32)cr;   /* two identical pixels */
+}
+
+/* levels have their own colours and lightning flashes brighten them, so the palette is refreshed every frame */
+static void update_palette(const Game *g)
+{
+    uint8_t p[PAL_N][3];
+    game_get_palette(g, p);
+    for (int i = 0; i < PAL_N; i++) pal_yuy2[i] = rgb_to_yuy2(p[i][0], p[i][1], p[i][2]);
 }
 
 static void apply_wide(int w)
@@ -105,7 +113,7 @@ static void present(const uint8_t *src)
         int sr = (y - top) * SCREEN_H / bh;
         if (sr != last) {
             const uint8_t *s = src + sr * SCREEN_W;
-            for (int i = 0; i < words; i++) linebuf[i] = pal_yuy2[s[i * SCREEN_W / words] & 31];
+            for (int i = 0; i < words; i++) linebuf[i] = pal_yuy2[s[i * SCREEN_W / words] & 127];
             last = sr;
         }
         memcpy(row, linebuf, (size_t)words * 4);
@@ -167,9 +175,9 @@ int main(int argc, char **argv)
     for (int id = 0; id < SFX_COUNT; id++)     /* ASND reads samples by DMA: flush the cache */
         DCFlushRange((void *)audio_data(id), (u32)audio_len(id) * 2);
 
-    for (int i = 0; i < 32; i++)
-        pal_yuy2[i] = rgb_to_yuy2(game_palette[i][0], game_palette[i][1], game_palette[i][2]);
     black_yuy2 = rgb_to_yuy2(0, 0, 0);
+    for (int i = 0; i < 128; i++) pal_yuy2[i] = black_yuy2;
+    update_palette(&game);
 
     rmode = VIDEO_GetPreferredMode(NULL);       /* 480p if the console/Dolphin has progressive scan enabled, else 480i */
     if ((rmode->viTVMode >> 2) == VI_PAL)       /* never run at 50 Hz: use PAL60 so the game is a true 60 fps */
@@ -218,6 +226,7 @@ int main(int argc, char **argv)
         while ((id = game_pop_sound(&game)) >= 0) play_sfx(id);
 
         game_render(&game, fb);
+        update_palette(&game);
         fbi ^= 1;
         present(fb);
         VIDEO_SetNextFramebuffer(xfb[fbi]);

@@ -19,7 +19,9 @@
 #define MAP_W      20
 #define MAP_H      10
 #define MAP_Y      20           /* map starts below the 20px HUD */
-#define NUM_WAVES  20
+#define NUM_WAVES  20           /* most waves any level has */
+#define NUM_LEVELS 4
+#define PAL_N      96           /* 32 base colours + 32 warm-lit + 32 cool-lit (glow) */
 
 #define MAX_ENEMIES 160
 #define MAX_PROJ    160
@@ -76,6 +78,7 @@ typedef struct {
     float     state_t;
     uint32_t  rng, frame, next_uid;
 
+    int level, nwaves;              /* current level 0..NUM_LEVELS-1 and its wave count */
     int lives, gold, wave, kills;
     int cx, cy, sel, fast;
     int rep[4];
@@ -98,6 +101,11 @@ typedef struct {
     char  banner[40]; float banner_t; int banner_col;
     float hurt_t, shake_t, fade;
 
+    /* storm weather (levels 2-4): lightning timeline and a private RNG so gameplay is unaffected */
+    float    strike_t, strike_amp, bolt_cd, thunder_t;
+    int      bolt_x0, bolt_x1, bolt_y1, bolt_seed, thunder_pending;
+    uint32_t wx;
+
     /* sound events: a small ring buffer plus per-effect throttles */
     uint8_t sfxq[32];
     int     sfx_head, sfx_tail;
@@ -106,10 +114,14 @@ typedef struct {
     uint8_t bg[SCREEN_W * MAP_H * TILE];   /* pre-rendered map */
 } Game;
 
-extern const uint8_t game_palette[32][3];
+extern const uint8_t game_palette[32][3];      /* level 1 base colours */
+/* The colours to show right now (levels have their own palettes and lightning flashes brighten them). */
+void game_get_palette(const Game *g, uint8_t out[PAL_N][3]);
+const char *game_level_name(int level);
 
 void game_init(Game *g);                       /* title screen state */
-void game_start(Game *g);                      /* begin a new run */
+void game_start(Game *g);                      /* begin a new run on the selected level */
+void game_start_level(Game *g, int level);     /* begin a run on a specific level (0-based) */
 void game_update(Game *g, uint32_t held, uint32_t pressed, float dt);
 void game_render(const Game *g, uint8_t *fb);  /* fb = SCREEN_W*SCREEN_H bytes */
 int  game_pop_sound(Game *g);                  /* next SFX_* id to play, or -1 */
