@@ -39,8 +39,11 @@
 #define WPAD_CLASSIC_BUTTON_RIGHT  (0x8000u << 16)
 #endif
 
-#ifndef VOICE_MONO16
-#define VOICE_MONO16 2              /* signed 16-bit big-endian mono */
+/* ASND sample format: signed 16-bit big-endian mono (libogc calls it VOICE_MONO_16BIT = 1).
+ * The old fallback value 2 is VOICE_STEREO_8BIT, which played every sample as two 8-bit halves
+ * and made the effects gritty, with hiss in the right speaker. */
+#ifndef VOICE_MONO_16BIT
+#define VOICE_MONO_16BIT 1
 #endif
 
 /* extra bits the platform layer handles itself (above the game's BTN_* bits) */
@@ -152,7 +155,7 @@ static void play_sfx(int id)
     s32 v = ASND_GetFirstUnusedVoice();
     if (v < 0) return;                         /* all voices busy: skip this one */
     int vol = audio_volume(id);
-    ASND_SetVoice(v, VOICE_MONO16, SFX_RATE, 0, (void *)audio_data(id), audio_len(id) * 2, vol, vol, NULL);
+    ASND_SetVoice(v, VOICE_MONO_16BIT, SFX_RATE, 0, (void *)audio_data(id), audio_len(id) * 2, vol, vol, NULL);
 }
 
 static void on_reset(u32 irq, void *ctx) { (void)irq; (void)ctx; quit = 1; }
