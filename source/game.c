@@ -241,6 +241,12 @@ static void glow_buf(uint8_t *buf, int h, int cx, int cy, int r, int ramp)
     }
 }
 
+/* glow straight onto the screen's map rows */
+static void gl2(uint8_t *fb, int cx, int cy, int r, int ramp)
+{
+    glow_buf(fb + MAP_Y * SCREEN_W, MAP_H * TILE, cx, cy - MAP_Y, r, ramp);
+}
+
 static void fade_black(uint8_t *fb, float amount)
 {
     int th = (int)(amount * 16.0f);
@@ -889,12 +895,12 @@ static void build_bg_storm(Game *g)
     for (int ty = 0; ty < MAP_H; ty++)
         for (int tx = 0; tx < MAP_W; tx++) {
             int dc = decor_at(tx, ty);
-            if (dc == D_LAMP)  glow_buf(bg, MAP_H * TILE, tx * TILE + 8, ty * TILE + 6, 17, 1);
-            if (dc == D_PUMPKIN) glow_buf(bg, MAP_H * TILE, tx * TILE + 8, ty * TILE + 9, 11, 1);
-            if (dc == D_FLORA && !is_path[ty][tx]) glow_buf(bg, MAP_H * TILE, tx * TILE + 8, ty * TILE + 9, 9, 2);
+            if (dc == D_LAMP)  glow_buf(bg, MAP_H * TILE, tx * TILE + 8, ty * TILE + 6, 11, 1);
+            if (dc == D_PUMPKIN) glow_buf(bg, MAP_H * TILE, tx * TILE + 8, ty * TILE + 9, 7, 1);
+            if (dc == D_FLORA && !is_path[ty][tx]) glow_buf(bg, MAP_H * TILE, tx * TILE + 8, ty * TILE + 9, 6, 2);
         }
-    glow_buf(bg, MAP_H * TILE, LV->wp[LV->nwp - 1][0] * TILE + 8, LV->wp[LV->nwp - 1][1] * TILE + 8, 24, 1);
-    glow_buf(bg, MAP_H * TILE, LV->wp[0][0] * TILE + 8, LV->wp[0][1] * TILE + 8, 22, 2);
+    glow_buf(bg, MAP_H * TILE, LV->wp[LV->nwp - 1][0] * TILE + 8, LV->wp[LV->nwp - 1][1] * TILE + 8, 15, 1);
+    glow_buf(bg, MAP_H * TILE, LV->wp[0][0] * TILE + 8, LV->wp[0][1] * TILE + 8, 14, 2);
 
     /* remember whether each live-drawn scenery tile sits in a glow, so its sprite can be lit the same way */
     for (int ty = 0; ty < MAP_H; ty++)
@@ -985,6 +991,16 @@ static void build_bg(Game *g)
     bg_blit(bg, &SPR[S_PORTAL], LV->wp[0][0] * TILE, LV->wp[0][1] * TILE);
 
     bg_keep(bg, 0);
+
+    /* gentle vignette so the corners sit back and the middle of the map glows */
+    for (int y = 0; y < MAP_H * TILE; y++)
+        for (int x = 0; x < SCREEN_W; x++) {
+            float nx = (float)(x - 160) / 160.0f, ny = (float)(y - 80) / 80.0f;
+            float v = nx * nx * 0.7f + ny * ny * 0.8f - 0.75f;
+            if (v <= 0) continue;
+            uint8_t *p = &bg[y * SCREEN_W + x];
+            if (BAYER4[(y & 3) * 4 + (x & 3)] < (int)(v * 16.0f)) *p = dark_of(*p);
+        }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1629,7 +1645,12 @@ void game_update(Game *g, uint32_t held, uint32_t pressed, float dt)
         if (pressed & (BTN_A | BTN_PLUS)) game_start(g);
         return;
     case ST_PAUSE:
-        if (pressed & (BTN_PLUS | BTN_A)) { g->state = ST_PLAY; sfx(g, SFX_PAUSE); }
+        if (pressed & (BTN_UP | BTN_DOWN)) { g->pause_sel ^= 1; sfx(g, SFX_MOVE); }
+        if (pressed & BTN_PLUS) { g->state = ST_PLAY; sfx(g, SFX_PAUSE); }
+        else if (pressed & BTN_A) {
+            if (g->pause_sel == 1) { level_pref = g->level; game_init(g); sfx(g, SFX_SELECT); }
+            else { g->state = ST_PLAY; sfx(g, SFX_PAUSE); }
+        }
         return;
     case ST_OVER:
     case ST_WIN:
@@ -1649,7 +1670,7 @@ void game_update(Game *g, uint32_t held, uint32_t pressed, float dt)
     if (pressed & BTN_L) { g->sel = (g->sel + TW_COUNT - 1) % TW_COUNT; sfx(g, SFX_SELECT); }
     if (pressed & BTN_R) { g->sel = (g->sel + 1) % TW_COUNT;            sfx(g, SFX_SELECT); }
     if (pressed & BTN_Y) { g->fast = !g->fast; sfx(g, SFX_SELECT); }
-    if (pressed & BTN_PLUS) { g->state = ST_PAUSE; sfx(g, SFX_PAUSE); return; }
+    if (pressed & BTN_PLUS) { g->state = ST_PAUSE; g->pause_sel = 0; sfx(g, SFX_PAUSE); return; }
     if (pressed & BTN_A) {
         if (g->towers[g->cy][g->cx].used) game_upgrade(g, g->cx, g->cy);
         else game_build(g, g->cx, g->cy, g->sel);
@@ -1962,9 +1983,52 @@ static void sprite_live(uint8_t *fb, const Sprite *s, int x, int y, const int8_t
     }
 }
 
+/* smooth pseudo-random flicker 0..1 for a light, from a few sines at unrelated speeds */
+static float flick(int f, uint32_t seed)
+{
+    int a = (int)(seed % 1024), b = (int)((seed >> 10) % 1024);
+    float v = trig_sin[(f * 7 + a) & 1023] * 0.5f + trig_sin[(f * 17 + b) & 1023] * 0.3f + trig_sin[(f * 41 + a * 3) & 1023] * 0.2f;
+    return v * 0.5f + 0.5f;
+}
+
+/* the lights' outer halos breathe and flicker: the baked glow is the steady core, this adds the live edge */
+static void draw_flicker_glows(uint8_t *fb, const Game *g)
+{
+    int f = (int)(g->frame & 0xFFFFFF);
+    for (int ty = 0; ty < MAP_H; ty++)
+        for (int tx = 0; tx < MAP_W; tx++) {
+            int dc = decor_map[ty][tx], r, ramp = 1, oy = 9;
+            uint32_t h = hash2(tx, ty, 91);
+            if (dc == D_LAMP) { r = 17; oy = 6; }
+            else if (dc == D_PUMPKIN) r = 11;
+            else if (dc == D_FLORA && !is_path[ty][tx]) { r = 9; ramp = 2; }
+            else continue;
+            float k = flick(f, h);
+            if (dc == D_FLORA) k = 0.55f + 0.45f * trig_sin[(f * 4 + (int)(h % 1024)) & 1023];   /* plants pulse slowly */
+            int rr = (int)((float)r * (0.72f + 0.42f * k) + 0.5f);
+            gl2(fb, tx * TILE + 8, MAP_Y + ty * TILE + oy, rr, ramp);
+        }
+    {
+        int kx = LV->wp[LV->nwp - 1][0] * TILE + 8, ky = MAP_Y + LV->wp[LV->nwp - 1][1] * TILE + 8;
+        gl2(fb, kx, ky, (int)(24.0f * (0.78f + 0.36f * flick(f, 5))), 1);
+        int px0 = LV->wp[0][0] * TILE + 8, py0 = MAP_Y + LV->wp[0][1] * TILE + 8;
+        gl2(fb, px0, py0, (int)(22.0f * (0.8f + 0.3f * trig_sin[(f * 5) & 1023] * 0.5f + 0.15f)), 2);
+    }
+}
+
 static void draw_scenery(uint8_t *fb, const Game *g)
 {
     int f = (int)(g->frame & 0xFFFFFF);
+    /* soft ground shadows under the scenery */
+    for (int ty = 0; ty < MAP_H; ty++)
+        for (int tx = 0; tx < MAP_W; tx++) {
+            int dc = decor_map[ty][tx];
+            if (dc == D_TREE || dc == D_DEAD || dc == D_ROCK || dc == D_GRAVE || dc == D_PUMPKIN || dc == D_SKEL || dc == D_LAMP) {
+                int cx = tx * TILE + (dc == D_TREE || dc == D_DEAD ? 10 : 9), cy = MAP_Y + ty * TILE + 15;
+                shadow_ellipse(fb, cx, cy, dc == D_TREE || dc == D_DEAD ? 6 : 5);
+            }
+        }
+    if (g->level > 0) draw_flicker_glows(fb, g);
     /* wind: a soft band of light drifts across the grass */
     for (int i = 0; i < wind_n; i++) {
         int x = wind_pt[i][0], y = wind_pt[i][1];
@@ -2137,9 +2201,11 @@ void game_render(const Game *g, uint8_t *fb)
     }
     if (g->state == ST_PAUSE) {
         darken(fb, 0, MAP_Y, SCREEN_W, MAP_H * TILE);
-        panel(fb, 80, 66, 160, 50, C_GRAY);
-        draw_text_center(fb, 74, "PAUSED", C_YELLOW, 3);
-        draw_text_center(fb, 98, "PRESS + TO RESUME", C_LIGHT, 1);
+        panel(fb, 80, 58, 160, 66, C_GRAY);
+        draw_text_center(fb, 65, "PAUSED", C_YELLOW, 3);
+        draw_text_center(fb, 91, g->pause_sel == 0 ? "> RESUME <" : "RESUME", g->pause_sel == 0 ? C_WHITE : C_LIGHT, 1);
+        draw_text_center(fb, 103, g->pause_sel == 1 ? "> QUIT TO TITLE <" : "QUIT TO TITLE", g->pause_sel == 1 ? C_WHITE : C_LIGHT, 1);
+        draw_text_center(fb, 114, "UP/DOWN + A", C_DKGRAY, 1);
     } else if (g->state == ST_OVER || g->state == ST_WIN) {
         char b[48];
         int win = g->state == ST_WIN;

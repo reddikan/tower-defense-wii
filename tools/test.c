@@ -253,6 +253,17 @@ int main(int argc, char **argv)
     game_render(&g, fb); dump(&g, fb, "pause");
     frame(&g, BTN_PLUS, BTN_PLUS);
     CHECK(g.state == ST_PLAY, "+ resumes");
+    frame(&g, BTN_PLUS, BTN_PLUS);
+    frame(&g, BTN_DOWN, BTN_DOWN);
+    CHECK(g.state == ST_PAUSE && g.pause_sel == 1, "pause menu: down selects quit");
+    game_render(&g, fb); dump(&g, fb, "pause_quit");
+    frame(&g, BTN_A, BTN_A);
+    CHECK(g.state == ST_TITLE, "quit from the pause menu returns to the title screen");
+    game_start(&g);
+    CHECK(g.state == ST_PLAY, "a new run can start after quitting");
+    frame(&g, BTN_PLUS, BTN_PLUS); frame(&g, BTN_A, BTN_A);
+    CHECK(g.state == ST_PLAY, "A on RESUME continues the game");
+    g.gold = 500; g.cx = 6; g.cy = 5;
     float wt = g.wave_timer;
     frame(&g, BTN_X, BTN_X);
     CHECK(g.wave_timer <= 0 || g.wave == 1, "X calls the next wave early");

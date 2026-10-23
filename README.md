@@ -24,7 +24,7 @@ and shots. Clearing a level takes you to the next one with fresh gold and lives.
 | L / R (or ZL / ZR) | change the selected tower type |
 | X | call the next wave early (bonus gold for the time saved) |
 | Y | fast-forward on/off |
-| + | pause |
+| + | pause menu (Up/Down + A: resume or quit to title) |
 | - | switch screen mode: the game starts filling a 16:9 screen; press - for a letterboxed picture on a 4:3 TV |
 | HOME | quit |
 

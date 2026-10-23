@@ -93,9 +93,21 @@ static void apply_wide(int w)
     if (rmode->viTVMode & VI_NON_INTERLACE) VIDEO_WaitVSync();
 }
 
-/* Convert the 320x180 palette image into the YUY2 external framebuffer. */
+/* blend two packed YUY2 words (Y0 U Y1 V): w = 0..256 is the weight of b */
+static inline u32 lerp_yuy2(u32 a, u32 b, u32 w)
+{
+    u32 uv = ((a & 0x00FF00FFu) * (256 - w) + (b & 0x00FF00FFu) * w) >> 8;
+    u32 yy = (((a >> 8) & 0x00FF00FFu) * (256 - w) + ((b >> 8) & 0x00FF00FFu) * w) & 0xFF00FF00u;
+    return (uv & 0x00FF00FFu) | yy;
+}
+
+/*
+ * Convert the 320x180 palette image into the YUY2 external framebuffer. Rows are blended vertically with a
+ * narrow smooth edge, so the picture is evenly scaled and softly anti-aliased instead of blocky.
+ */
 static void present(const uint8_t *src)
 {
+    static u32 rowa[512], rowb[512];
     u32 *dst   = (u32 *)xfb[fbi];
     int  W     = rmode->fbWidth;
     int  H     = rmode->xfbHeight;
@@ -103,20 +115,35 @@ static void present(const uint8_t *src)
     int  top = 0, bh = H;
     if (!wide) { bh = W * 9 / 16; top = (H - bh) / 2; }   /* 16:9 picture inside a 4:3 frame */
 
-    int last = -1;
+    int ra = -1, rb = -1;                     /* which source rows rowa / rowb currently hold */
     for (int y = 0; y < H; y++) {
         u32 *row = dst + (size_t)y * words;
         if (y < top || y >= top + bh) {
             for (int i = 0; i < words; i++) row[i] = black_yuy2;
             continue;
         }
-        int sr = (y - top) * SCREEN_H / bh;
-        if (sr != last) {
-            const uint8_t *s = src + sr * SCREEN_W;
-            for (int i = 0; i < words; i++) linebuf[i] = pal_yuy2[s[i * SCREEN_W / words] & 127];
-            last = sr;
+        /* position of this output row's centre in source rows, 8.8 fixed point */
+        int pos = (((y - top) * 2 + 1) * SCREEN_H * 128) / bh - 128;
+        if (pos < 0) pos = 0;
+        int r0 = pos >> 8, f = pos & 255;
+        int r1 = r0 + 1 < SCREEN_H ? r0 + 1 : r0;
+        int w = (f - 64) * 2;                 /* keep the middle of each source pixel crisp */
+        w = w < 0 ? 0 : (w > 256 ? 256 : w);
+        if (r0 != ra) {
+            if (r0 == rb) { memcpy(rowa, rowb, (size_t)words * 4); }
+            else {
+                const uint8_t *s = src + r0 * SCREEN_W;
+                for (int i = 0; i < words; i++) rowa[i] = pal_yuy2[s[i * SCREEN_W / words] & 127];
+            }
+            ra = r0; rb = -1;
         }
-        memcpy(row, linebuf, (size_t)words * 4);
+        if (w == 0 || r1 == r0) { memcpy(row, rowa, (size_t)words * 4); continue; }
+        if (rb != r1) {
+            const uint8_t *s = src + r1 * SCREEN_W;
+            for (int i = 0; i < words; i++) rowb[i] = pal_yuy2[s[i * SCREEN_W / words] & 127];
+            rb = r1;
+        }
+        for (int i = 0; i < words; i++) row[i] = lerp_yuy2(rowa[i], rowb[i], (u32)w);
     }
     DCFlushRange(dst, (u32)W * (u32)H * VI_DISPLAY_PIX_SZ);
 }

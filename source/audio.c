@@ -159,73 +159,35 @@ static void begin(void)
     mixend = 0;
 }
 
-/* small Schroeder reverb: 4 damped combs + 2 all-passes (delays in samples at 44.1 kHz) */
-static void reverb(const float *in, float *out, int n, float room, float wet)
-{
-    static const int comb_len[4] = {1557, 1617, 1491, 1422};
-    static const int ap_len[2] = {556, 441};
-    static float comb[4][1700], ap[2][600];
-    int ci[4] = {0, 0, 0, 0}, ai[2] = {0, 0};
-    float cstate[4] = {0, 0, 0, 0};
-    memset(comb, 0, sizeof comb);
-    memset(ap, 0, sizeof ap);
-    float fb = 0.45f + 0.32f * room, damp = 0.35f;
-    for (int i = 0; i < n; i++) {
-        float x = (i < mixend) ? in[i] : 0.0f, acc = 0.0f;
-        for (int c = 0; c < 4; c++) {
-            float y = comb[c][ci[c]];
-            cstate[c] = y * (1.0f - damp) + cstate[c] * damp;
-            comb[c][ci[c]] = x * 0.25f + cstate[c] * fb;
-            if (++ci[c] >= comb_len[c]) ci[c] = 0;
-            acc += y;
-        }
-        for (int a = 0; a < 2; a++) {
-            float bufv = ap[a][ai[a]], y = -acc + bufv;
-            ap[a][ai[a]] = acc + bufv * 0.5f;
-            if (++ai[a] >= ap_len[a]) ai[a] = 0;
-            acc = y;
-        }
-        out[i] = ((i < mixend) ? in[i] : 0.0f) + acc * wet;
-    }
-}
-
-/* mix down: reverb (wet 0..1, room 0..1), soft clip, normalise, 16-bit */
+/* mix down: a clean two-tap echo for a little space (no reverb noise), normalise, 16-bit. No clipping or saturation. */
 static void finish_fx(int id, float wet, float room)
 {
-    int tail = (int)((0.10f + 0.6f * room * (wet > 0.0f ? 1.0f : 0.0f)) * SR);
+    int d1 = (int)((0.045f + 0.07f * room) * SR), d2 = d1 * 2 + (int)(0.013f * SR);
+    int tail = (wet > 0.0f) ? d2 + (int)(0.05f * SR) : (int)(0.03f * SR);
     int len = mixend + tail;
     if (len > MAXLEN) len = MAXLEN;
-    reverb(mixbuf, outbuf, len, room, wet);
-    {                                                  /* trim the silent tail (anything below about -54 dB) */
-        float pk = 0.0f;
-        for (int i = 0; i < len; i++) if (fabsf(outbuf[i]) > pk) pk = fabsf(outbuf[i]);
-        int last = len;
-        while (last > 1 && fabsf(outbuf[last - 1]) < pk * 0.002f) last--;
-        last += (int)(0.03f * SR);
-        if (last < len) len = last;
-    }
-    int fade = (int)(0.03f * SR);                      /* fade the very end so nothing clicks */
-    float peak = 0.0f, lp = 0.0f;
+    float peak = 0.0f;
     for (int i = 0; i < len; i++) {
-        lp += 0.7f * (outbuf[i] - lp);                  /* gentle low-pass (~7 kHz) removes any fizz */
-        float x = lp;
-        if (len - i < fade) x *= (float)(len - i) / (float)fade;
+        float x = (i < mixend) ? mixbuf[i] : 0.0f;
+        if (i >= d1 && i - d1 < mixend) x += wet * 0.6f * mixbuf[i - d1];
+        if (i >= d2 && i - d2 < mixend) x += wet * 0.3f * mixbuf[i - d2];
         outbuf[i] = x;
         if (fabsf(x) > peak) peak = fabsf(x);
     }
-    float drive = peak > 0.0f ? 1.6f / peak : 0.0f;    /* soft saturation tames stacked voices */
-    float peak2 = 0.0f;
-    for (int i = 0; i < len; i++) {
-        float x = outbuf[i] * drive;
-        x = x * (27.0f + x * x) / (27.0f + 9.0f * x * x);       /* tanh-like */
-        outbuf[i] = x;
-        if (fabsf(x) > peak2) peak2 = fabsf(x);
-    }
-    float scale = peak2 > 0.0f ? 0.9f / peak2 : 0.0f;
+    int last = len;                                    /* trim the silent tail */
+    while (last > 1 && fabsf(outbuf[last - 1]) < peak * 0.003f) last--;
+    last += (int)(0.02f * SR);
+    if (last < len) len = last;
+    int fade = (int)(0.02f * SR);
+    float scale = peak > 0.0f ? 0.85f * 32000.0f / peak : 0.0f;
     int outlen = (len + 15) & ~15;
     if (outlen > MAXLEN) outlen = MAXLEN;
     memset(SFX[id], 0, sizeof SFX[id]);
-    for (int i = 0; i < len && i < MAXLEN; i++) SFX[id][i] = (int16_t)(outbuf[i] * scale * 32000.0f);
+    for (int i = 0; i < len && i < MAXLEN; i++) {
+        float x = outbuf[i];
+        if (len - i < fade) x *= (float)(len - i) / (float)fade;
+        SFX[id][i] = (int16_t)(x * scale);
+    }
     sfx_len[id] = outlen;
 }
 
@@ -249,7 +211,7 @@ static void finish_fx(int id, float wet, float room)
 /* a bell/ping: FM with a slightly inharmonic ratio */
 static void bell(float t, float f, float vol, float tau)
 {
-    tone(t, tau * 5.0f, f, f, vol, 0.002f, tau, W_FM, 2.0f, 2.2f);
+    tone(t, tau * 5.0f, f, f, vol, 0.002f, tau, W_FM, 3.0f, 1.1f);
     tone(t, tau * 3.0f, f * 2.0f, f * 2.0f, vol * 0.25f, 0.002f, tau * 0.5f, W_SIN, 0, 0);
 }
 
@@ -259,153 +221,143 @@ void audio_init(void)
     ready = 1;
     for (int i = 0; i <= TABN; i++) sine_tab[i] = sinf((float)i * 2.0f * (float)M_PI / (float)TABN);
 
+    /* Everything below is built from pure tones: sines, soft triangles and gentle FM. Drums and booms are
+       pitch-dropping sines, not noise, so nothing hisses. Only the thunder uses a deep, low-passed rumble. */
+
     /* --- interface --- */
-    begin();                                                         /* cursor tick: a soft click */
-    tone(0, 0.06f, 1900, 1450, 0.5f, 0.001f, 0.014f, W_SIN, 0, 0);
-    noise(0, 0.03f, 6500, 6500, 0.7f, 0.1f, 0.0005f, 0.006f, F_HP);
-    finish_fx(SFX_MOVE, 0.06f, 0.3f);
+    begin();                                                         /* cursor: a tiny soft tick */
+    tone(0, 0.05f, 1400, 1100, 0.6f, 0.002f, 0.012f, W_SIN, 0, 0);
+    finish_fx(SFX_MOVE, 0.0f, 0.0f);
 
-    begin();                                                         /* select: two quick, soft notes */
-    tone(0.00f, 0.12f, 988, 988, 0.5f, 0.002f, 0.035f, W_FM, 2.0f, 1.0f);
-    tone(0.05f, 0.16f, 1319, 1319, 0.5f, 0.002f, 0.05f, W_FM, 2.0f, 0.9f);
-    finish_fx(SFX_SELECT, 0.14f, 0.4f);
+    begin();                                                         /* select: two clean rising notes */
+    tone(0.00f, 0.15f, 880, 880, 0.5f, 0.004f, 0.045f, W_SIN, 0, 0);
+    tone(0.06f, 0.20f, 1319, 1319, 0.5f, 0.004f, 0.06f, W_SIN, 0, 0);
+    finish_fx(SFX_SELECT, 0.3f, 0.3f);
 
-    begin();                                                         /* pause: a gentle two-note drop */
-    tone(0.00f, 0.14f, 880, 880, 0.5f, 0.003f, 0.05f, W_FM, 1.0f, 0.8f);
-    tone(0.07f, 0.2f, 659, 659, 0.5f, 0.003f, 0.07f, W_FM, 1.0f, 0.8f);
-    finish_fx(SFX_PAUSE, 0.14f, 0.4f);
+    begin();                                                         /* pause: a calm falling pair */
+    tone(0.00f, 0.16f, 784, 784, 0.5f, 0.004f, 0.06f, W_SIN, 0, 0);
+    tone(0.08f, 0.24f, 587, 587, 0.5f, 0.004f, 0.08f, W_SIN, 0, 0);
+    finish_fx(SFX_PAUSE, 0.3f, 0.3f);
 
-    begin();                                                         /* error: soft double thunk, not a buzz */
-    tone(0.00f, 0.15f, 196, 175, 0.7f, 0.004f, 0.06f, W_TRI, 0, 0);
-    tone(0.00f, 0.15f, 208, 185, 0.4f, 0.004f, 0.06f, W_SOFT, 1.5f, 0);
-    tone(0.11f, 0.22f, 165, 140, 0.7f, 0.004f, 0.08f, W_TRI, 0, 0);
-    tone(0.11f, 0.22f, 175, 150, 0.4f, 0.004f, 0.08f, W_SOFT, 1.5f, 0);
-    noise(0, 0.1f, 900, 250, 0.8f, 0.3f, 0.002f, 0.03f, F_LP);
-    finish_fx(SFX_ERROR, 0.1f, 0.3f);
+    begin();                                                         /* error: two low soft thuds */
+    tone(0.00f, 0.14f, 150, 110, 0.8f, 0.004f, 0.05f, W_SIN, 0, 0);
+    tone(0.11f, 0.20f, 125, 90, 0.8f, 0.004f, 0.07f, W_SIN, 0, 0);
+    tone(0.00f, 0.14f, 300, 220, 0.2f, 0.004f, 0.04f, W_TRI, 0, 0);
+    tone(0.11f, 0.20f, 250, 180, 0.2f, 0.004f, 0.05f, W_TRI, 0, 0);
+    finish_fx(SFX_ERROR, 0.0f, 0.0f);
 
     /* --- building --- */
-    begin();                                                         /* build: stone thump, then a bright chime */
-    tone(0, 0.18f, 175, 58, 0.9f, 0.001f, 0.055f, W_SIN, 0, 0);
-    noise(0, 0.1f, 1500, 300, 0.8f, 0.5f, 0.001f, 0.03f, F_LP);
-    bell(0.075f, 784.0f, 0.4f, 0.12f);
-    bell(0.13f, 1175.0f, 0.35f, 0.14f);
-    finish_fx(SFX_BUILD, 0.22f, 0.6f);
+    begin();                                                         /* build: a firm thunk and a bright chime */
+    tone(0, 0.16f, 160, 55, 0.9f, 0.002f, 0.05f, W_SIN, 0, 0);
+    bell(0.07f, 784.0f, 0.35f, 0.10f);
+    bell(0.13f, 1175.0f, 0.3f, 0.12f);
+    finish_fx(SFX_BUILD, 0.3f, 0.4f);
 
     begin();                                                         /* upgrade: rising sparkle */
-    bell(0.00f, C5, 0.45f, 0.14f);
-    bell(0.07f, E5, 0.45f, 0.14f);
-    bell(0.14f, G5, 0.45f, 0.14f);
-    bell(0.21f, C6, 0.5f, 0.2f);
-    tone(0.0f, 0.5f, C4, C4, 0.2f, 0.01f, 0.2f, W_TRI, 0, 0);
-    noise(0.0f, 0.5f, 3000, 9000, 0.7f, 0.12f, 0.02f, 0.2f, F_HP);
-    finish_fx(SFX_UPGRADE, 0.3f, 0.7f);
+    bell(0.00f, C5, 0.4f, 0.12f);
+    bell(0.07f, E5, 0.4f, 0.12f);
+    bell(0.14f, G5, 0.4f, 0.12f);
+    bell(0.21f, C6, 0.45f, 0.18f);
+    tone(0.0f, 0.4f, C4, C4, 0.15f, 0.01f, 0.15f, W_SIN, 0, 0);
+    finish_fx(SFX_UPGRADE, 0.3f, 0.4f);
 
-    begin();                                                         /* sell: two metallic coin pings */
-    tone(0.00f, 0.4f, 1319, 1319, 0.5f, 0.001f, 0.1f, W_FM, 1.41f, 1.8f);
-    tone(0.07f, 0.6f, 1976, 1976, 0.5f, 0.001f, 0.18f, W_FM, 1.41f, 1.6f);
-    noise(0, 0.02f, 7000, 7000, 0.7f, 0.15f, 0.0005f, 0.006f, F_HP);
-    finish_fx(SFX_SELL, 0.22f, 0.5f);
+    begin();                                                         /* sell: two bright coin pings */
+    bell(0.00f, 1319.0f, 0.5f, 0.08f);
+    bell(0.07f, 1976.0f, 0.5f, 0.14f);
+    finish_fx(SFX_SELL, 0.3f, 0.3f);
 
     /* --- combat --- */
-    begin();                                                         /* arrow: a soft pluck and a whoosh */
-    tone(0, 0.1f, 1500, 700, 0.45f, 0.001f, 0.028f, W_TRI, 0, 0);
-    noise(0, 0.12f, 5000, 1500, 1.2f, 0.4f, 0.002f, 0.04f, F_BP);
-    finish_fx(SFX_ARROW, 0.07f, 0.3f);
+    begin();                                                         /* arrow: a quick airy pluck */
+    tone(0, 0.09f, 1300, 520, 0.5f, 0.002f, 0.022f, W_SIN, 0, 0);
+    tone(0, 0.07f, 2600, 1040, 0.12f, 0.002f, 0.015f, W_SIN, 0, 0);
+    finish_fx(SFX_ARROW, 0.0f, 0.0f);
 
-    begin();                                                         /* cannon: deep boom */
-    tone(0, 0.5f, 130, 38, 1.0f, 0.001f, 0.15f, W_SIN, 0, 0);
-    tone(0, 0.14f, 380, 120, 0.4f, 0.001f, 0.045f, W_TRI, 0, 0);
-    noise(0, 0.32f, 1800, 120, 0.8f, 0.9f, 0.001f, 0.1f, F_LP);
-    finish_fx(SFX_CANNON, 0.22f, 0.75f);
+    begin();                                                         /* cannon: a deep boom */
+    tone(0, 0.55f, 120, 36, 1.0f, 0.002f, 0.16f, W_SIN, 0, 0);
+    tone(0, 0.18f, 260, 80, 0.5f, 0.002f, 0.05f, W_SIN, 0, 0);
+    tone(0, 0.30f, 70, 40, 0.5f, 0.002f, 0.10f, W_TRI, 0, 0);
+    finish_fx(SFX_CANNON, 0.25f, 0.4f);
 
     begin();                                                         /* frost: glassy shimmer */
-    tone(0.00f, 0.9f, 1568, 1568, 0.35f, 0.003f, 0.2f, W_FM, 2.0f, 1.5f);
-    tone(0.04f, 0.9f, 2093, 2093, 0.3f, 0.003f, 0.2f, W_FM, 2.0f, 1.3f);
-    tone(0.08f, 1.0f, 2637, 2637, 0.28f, 0.003f, 0.24f, W_FM, 2.0f, 1.2f);
-    noise(0, 0.35f, 8000, 8000, 0.6f, 0.12f, 0.004f, 0.1f, F_HP);
-    finish_fx(SFX_FROST, 0.4f, 0.85f);
+    tone(0.00f, 0.8f, 1568, 1568, 0.3f, 0.004f, 0.18f, W_FM, 2.0f, 0.8f);
+    tone(0.04f, 0.8f, 2093, 2093, 0.25f, 0.004f, 0.18f, W_FM, 2.0f, 0.7f);
+    tone(0.08f, 0.9f, 2637, 2637, 0.22f, 0.004f, 0.2f, W_FM, 2.0f, 0.6f);
+    finish_fx(SFX_FROST, 0.35f, 0.6f);
 
-    begin();                                                         /* explosion */
-    noise(0, 0.9f, 2800, 80, 0.7f, 1.0f, 0.001f, 0.24f, F_LP);
-    tone(0, 0.7f, 90, 28, 1.0f, 0.001f, 0.24f, W_SIN, 0, 0);
-    noise(0.02f, 0.4f, 6000, 800, 0.8f, 0.35f, 0.001f, 0.09f, F_HP);
-    finish_fx(SFX_EXPLODE, 0.3f, 0.85f);
+    begin();                                                         /* explosion: big falling thump + rumble */
+    tone(0, 0.8f, 100, 28, 1.0f, 0.002f, 0.22f, W_SIN, 0, 0);
+    tone(0, 0.3f, 220, 60, 0.6f, 0.002f, 0.07f, W_SIN, 0, 0);
+    noise(0, 0.8f, 380, 70, 0.6f, 0.9f, 0.002f, 0.2f, F_LP);
+    finish_fx(SFX_EXPLODE, 0.2f, 0.4f);
 
-    begin();                                                         /* enemy popped: a round little bloop */
-    tone(0, 0.12f, 820, 260, 0.7f, 0.001f, 0.035f, W_SIN, 0, 0);
-    tone(0, 0.09f, 1640, 520, 0.3f, 0.001f, 0.022f, W_TRI, 0, 0);
-    noise(0, 0.06f, 3000, 800, 0.9f, 0.25f, 0.001f, 0.016f, F_BP);
-    finish_fx(SFX_KILL, 0.1f, 0.4f);
+    begin();                                                         /* enemy popped: a round bloop */
+    tone(0, 0.12f, 700, 300, 0.7f, 0.002f, 0.035f, W_SIN, 0, 0);
+    tone(0, 0.08f, 1400, 600, 0.15f, 0.002f, 0.02f, W_SIN, 0, 0);
+    finish_fx(SFX_KILL, 0.0f, 0.0f);
 
-    begin();                                                         /* the keep is hit: low, beating "womp" */
-    tone(0, 0.55f, 196, 98, 0.7f, 0.003f, 0.2f, W_SOFT, 0.5f, 0);
-    tone(0, 0.55f, 208, 104, 0.6f, 0.003f, 0.2f, W_SOFT, 0.5f, 0);
-    tone(0, 0.4f, 70, 45, 0.8f, 0.001f, 0.13f, W_SIN, 0, 0);
-    noise(0, 0.2f, 900, 150, 0.8f, 0.5f, 0.001f, 0.065f, F_LP);
-    finish_fx(SFX_LEAK, 0.25f, 0.6f);
+    begin();                                                         /* the keep is hit: a low sad "womp" */
+    tone(0, 0.5f, 196, 98, 0.7f, 0.004f, 0.2f, W_TRI, 0, 0);
+    tone(0, 0.5f, 98, 49, 0.6f, 0.004f, 0.2f, W_SIN, 0, 0);
+    finish_fx(SFX_LEAK, 0.25f, 0.4f);
 
     /* --- waves / game flow --- */
-    begin();                                                         /* wave horn: two warm brass notes */
-    tone(0.00f, 0.7f, G4, G4, 0.5f, 0.04f, 0.4f, W_SOFT, 0.6f, 0);
-    tone(0.00f, 0.7f, G4 * 1.006f, G4 * 1.006f, 0.4f, 0.04f, 0.4f, W_SOFT, 0.6f, 0);
-    tone(0.22f, 0.6f, C5, C5, 0.5f, 0.03f, 0.35f, W_SOFT, 0.6f, 0);
-    tone(0.22f, 0.6f, C5 * 1.006f, C5 * 1.006f, 0.4f, 0.03f, 0.35f, W_SOFT, 0.6f, 0);
-    tone(0.00f, 0.85f, 196, 196, 0.3f, 0.05f, 0.45f, W_SIN, 0, 0);
-    finish_fx(SFX_WAVE, 0.35f, 0.7f);
+    begin();                                                         /* wave horn: two warm notes */
+    tone(0.00f, 0.7f, G4, G4, 0.5f, 0.03f, 0.4f, W_TRI, 0, 0);
+    tone(0.00f, 0.7f, G4 * 2.0f, G4 * 2.0f, 0.12f, 0.03f, 0.3f, W_SIN, 0, 0);
+    tone(0.22f, 0.6f, C5, C5, 0.5f, 0.03f, 0.35f, W_TRI, 0, 0);
+    tone(0.22f, 0.6f, C5 * 2.0f, C5 * 2.0f, 0.12f, 0.03f, 0.25f, W_SIN, 0, 0);
+    tone(0.00f, 0.8f, 196, 196, 0.25f, 0.04f, 0.4f, W_SIN, 0, 0);
+    finish_fx(SFX_WAVE, 0.3f, 0.5f);
 
-    begin();                                                         /* boss: dark, rumbling drone */
-    tone(0, 1.3f, 55, 52, 0.7f, 0.08f, 0.8f, W_SOFT, 0.2f, 0);
-    tone(0, 1.3f, 110, 106, 0.5f, 0.1f, 0.8f, W_SOFT, 1.0f, 0);
-    tone(0, 1.3f, 116.5f, 112, 0.4f, 0.1f, 0.8f, W_SOFT, 1.0f, 0);
-    noise(0, 1.3f, 320, 100, 2.0f, 0.4f, 0.12f, 0.9f, F_LP);
-    tone(0.55f, 0.6f, 82, 58, 0.6f, 0.005f, 0.25f, W_SIN, 0, 0);
-    finish_fx(SFX_BOSS, 0.4f, 0.9f);
+    begin();                                                         /* boss: a dark, rising rumble */
+    tone(0, 1.2f, 55, 52, 0.7f, 0.08f, 0.7f, W_SIN, 0, 0);
+    tone(0, 1.2f, 110, 104, 0.4f, 0.1f, 0.7f, W_TRI, 0, 0);
+    tone(0, 1.2f, 116.5f, 110, 0.3f, 0.1f, 0.7f, W_TRI, 0, 0);
+    tone(0.5f, 0.6f, 82, 55, 0.6f, 0.004f, 0.22f, W_SIN, 0, 0);
+    finish_fx(SFX_BOSS, 0.25f, 0.5f);
 
-    begin();                                                         /* wave clear: bright little fanfare */
-    bell(0.00f, C5, 0.45f, 0.14f);
-    bell(0.10f, E5, 0.45f, 0.14f);
-    bell(0.20f, G5, 0.45f, 0.14f);
-    bell(0.30f, C6, 0.55f, 0.28f);
-    tone(0.30f, 0.8f, C5, C5, 0.22f, 0.02f, 0.4f, W_SOFT, 1.5f, 0);
-    tone(0.30f, 0.8f, G5, G5, 0.16f, 0.02f, 0.4f, W_SOFT, 1.5f, 0);
-    finish_fx(SFX_CLEAR, 0.35f, 0.75f);
+    begin();                                                         /* wave clear: bright fanfare */
+    bell(0.00f, C5, 0.4f, 0.12f);
+    bell(0.10f, E5, 0.4f, 0.12f);
+    bell(0.20f, G5, 0.4f, 0.12f);
+    bell(0.30f, C6, 0.5f, 0.24f);
+    tone(0.30f, 0.7f, C5, C5, 0.2f, 0.02f, 0.35f, W_TRI, 0, 0);
+    finish_fx(SFX_CLEAR, 0.3f, 0.5f);
 
     begin();                                                         /* new game */
-    bell(0.00f, G4, 0.45f, 0.12f);
-    bell(0.08f, C5, 0.45f, 0.12f);
-    bell(0.16f, E5, 0.45f, 0.12f);
-    bell(0.24f, G5, 0.55f, 0.3f);
-    tone(0.24f, 0.7f, C5, C5, 0.2f, 0.02f, 0.35f, W_SOFT, 1.5f, 0);
-    finish_fx(SFX_START, 0.3f, 0.7f);
+    bell(0.00f, G4, 0.4f, 0.10f);
+    bell(0.08f, C5, 0.4f, 0.10f);
+    bell(0.16f, E5, 0.4f, 0.10f);
+    bell(0.24f, G5, 0.5f, 0.26f);
+    tone(0.24f, 0.6f, C5, C5, 0.18f, 0.02f, 0.3f, W_TRI, 0, 0);
+    finish_fx(SFX_START, 0.3f, 0.5f);
 
-    begin();                                                         /* game over: a sad, slow descent */
+    begin();                                                         /* game over: a slow, sad descent */
     static const float over_f[4] = {G4, F4, EB4, C4};
     for (int i = 0; i < 4; i++) {
-        float t = 0.24f * (float)i, f = over_f[i], ln = (i == 3) ? 0.9f : 0.34f;
-        tone(t, ln, f, f * 0.985f, 0.5f, 0.012f, i == 3 ? 0.5f : 0.22f, W_TRI, 0, 0);
-        tone(t, ln, f * 0.5f, f * 0.5f * 0.985f, 0.35f, 0.012f, i == 3 ? 0.5f : 0.22f, W_SOFT, 1.0f, 0);
+        float t = 0.24f * (float)i, f = over_f[i], ln = (i == 3) ? 0.9f : 0.34f, tau = i == 3 ? 0.5f : 0.2f;
+        tone(t, ln, f, f * 0.985f, 0.5f, 0.012f, tau, W_TRI, 0, 0);
+        tone(t, ln, f * 0.5f, f * 0.5f * 0.985f, 0.35f, 0.012f, tau, W_SIN, 0, 0);
     }
-    finish_fx(SFX_OVER, 0.4f, 0.8f);
+    finish_fx(SFX_OVER, 0.3f, 0.5f);
 
     begin();                                                         /* victory */
-    bell(0.00f, C5, 0.45f, 0.12f);
-    bell(0.11f, C5, 0.45f, 0.12f);
-    bell(0.22f, C5, 0.45f, 0.12f);
-    bell(0.33f, E5, 0.5f, 0.18f);
-    bell(0.58f, D5, 0.45f, 0.12f);
-    bell(0.70f, G5, 0.55f, 0.3f);
-    bell(0.70f, C6, 0.3f, 0.3f);
-    tone(0.70f, 1.0f, C5, C5, 0.22f, 0.03f, 0.5f, W_SOFT, 1.5f, 0);
-    tone(0.70f, 1.0f, E5, E5, 0.18f, 0.03f, 0.5f, W_SOFT, 1.5f, 0);
-    tone(0.70f, 1.0f, G5 * 0.5f, G5 * 0.5f, 0.2f, 0.03f, 0.5f, W_SOFT, 1.5f, 0);
-    finish_fx(SFX_WIN, 0.4f, 0.8f);
+    bell(0.00f, C5, 0.4f, 0.10f);
+    bell(0.11f, C5, 0.4f, 0.10f);
+    bell(0.22f, C5, 0.4f, 0.10f);
+    bell(0.33f, E5, 0.45f, 0.16f);
+    bell(0.58f, D5, 0.4f, 0.10f);
+    bell(0.70f, G5, 0.5f, 0.28f);
+    bell(0.70f, C6, 0.3f, 0.28f);
+    tone(0.70f, 0.9f, C5, C5, 0.18f, 0.03f, 0.45f, W_TRI, 0, 0);
+    tone(0.70f, 0.9f, E5, E5, 0.14f, 0.03f, 0.45f, W_TRI, 0, 0);
+    finish_fx(SFX_WIN, 0.3f, 0.5f);
 
-    begin();                                                         /* thunder: a crack, then a long, rolling rumble */
-    noise(0, 0.12f, 3500, 700, 0.7f, 0.3f, 0.001f, 0.035f, F_LP);
-    noise(0, 1.7f, 520, 70, 0.6f, 1.0f, 0.05f, 0.75f, F_LP);
-    noise(0.35f, 1.2f, 300, 60, 0.8f, 0.6f, 0.2f, 0.5f, F_LP);
-    tone(0.03f, 1.6f, 40, 30, 0.8f, 0.1f, 0.8f, W_SIN, 0, 0);
-    finish_fx(SFX_THUNDER, 0.3f, 0.9f);
+    begin();                                                         /* thunder: deep rolling rumble, no hiss */
+    noise(0, 1.8f, 240, 50, 0.7f, 1.0f, 0.04f, 0.75f, F_LP);
+    noise(0.3f, 1.4f, 160, 45, 0.9f, 0.7f, 0.2f, 0.5f, F_LP);
+    tone(0.02f, 1.6f, 48, 30, 0.9f, 0.05f, 0.8f, W_SIN, 0, 0);
+    finish_fx(SFX_THUNDER, 0.2f, 0.6f);
 }
 
 const int16_t *audio_data(int id) { return SFX[id]; }

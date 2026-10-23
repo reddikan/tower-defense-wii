@@ -100,6 +100,7 @@ typedef struct {
     char  msg[40];    float msg_t;
     char  banner[40]; float banner_t; int banner_col;
     float hurt_t, shake_t, fade;
+    int   pause_sel;                 /* pause menu: 0 = resume, 1 = quit to title */
 
     /* storm weather (levels 2-4): lightning timeline and a private RNG so gameplay is unaffected */
     float    strike_t, strike_amp, bolt_cd, thunder_t;
