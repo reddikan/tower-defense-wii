@@ -1,9 +1,9 @@
 # TOWER DEFENSE  (Wii homebrew)
 
 A retro, top-down, colourful tower defense game for the Nintendo Wii, played with the
-
-**Endless:** every level keeps sending bigger waves until the keep falls - how far can you get? Your best wave per level is shown on the title screen (kept until you close the game).
 **Wii Classic Controller** (no motion controls). 16:9, 60 fps, retro-style graphics and clean, modern-sounding sound effects.
+**Endless:** every level keeps sending bigger waves until the keep falls - how far can you get? Your best wave per level is shown on the title screen (kept until you close the game).
+
 Build **arrow**, **cannon** and **frost** towers along the road and stop slimes, bats, golems and bosses
 from reaching your keep. There are **4 levels**:
 
