@@ -25,10 +25,10 @@ and shots. Clearing a level takes you to the next one with fresh gold and lives.
 | D-Pad | move the cursor (hold to repeat); on the title screen, left/right picks the level |
 | A | build the selected tower / upgrade the tower under the cursor |
 | B | sell the tower under the cursor (70% refund) |
-| L / R (or ZL / ZR) | change the selected tower type |
+| ZL / ZR | change the selected tower type |
 | X | call the next wave early (bonus gold for the time saved) |
 | Y | fast-forward on/off |
-| Right stick up/down | zoom in / out around the cursor (1x, 2x, 3x) |
+| R / L (back triggers) | R zooms in, L zooms out around the cursor (1x, 2x, 3x) |
 | + | pause menu (Up/Down + A: resume, sound on/off, quit to title) |
 | - | switch screen mode: the game starts filling a 16:9 screen; press - for a letterboxed picture on a 4:3 TV |
 | HOME | quit |
@@ -81,7 +81,8 @@ in `tools/out/sounds/` so you can listen to them.
 ## Layout
 
 ```
-source/game.c, game.h   game rules + software renderer (plain C99, 320x180 palette framebuffer; 4 levels)
+source/art.inc            every sprite, drawn in code with lit, shaded primitives
+source/game.c, game.h   game rules + software renderer (plain C99, 640x360 palette framebuffer; 4 levels)
 source/audio.c, audio.h synthesized sound effects (no audio files needed)
 source/main.c           the only Wii-specific file: video (YUY2 XFB), Classic Controller, ASND audio
 tools/                  native tests, benchmark, PNG/WAV export

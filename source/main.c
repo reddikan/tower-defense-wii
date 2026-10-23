@@ -1,7 +1,7 @@
 /*
  * TOWER DEFENSE - Nintendo Wii platform layer (devkitPPC + libogc).
  *
- *   video : the 320x180 palette framebuffer is converted to the Wii's YUY2
+ *   video : the 640x360 palette framebuffer is converted to the Wii's YUY2
  *           external framebuffer, 16:9 (anamorphic) or letterboxed in 4:3
  *   input : Wii Classic Controller (extension plugged into Wii Remote 1)
  *   audio : the synthesized effects are played through libogc's ASND
@@ -58,22 +58,21 @@ static volatile int quit;
 
 static Game    game;
 static uint8_t fb[SCREEN_W * SCREEN_H];
-static u32     pal_yuy2[256];      /* PAL_N used; the rest stay black */
+static uint8_t pal_y[256], pal_cb[256], pal_cr[256];   /* PAL_N used; the rest stay black */
 static u32     black_yuy2;
 static u32     linebuf[512];
 
 /* ------------------------------------------------------------------ */
 /* video                                                               */
 /* ------------------------------------------------------------------ */
-static u32 rgb_to_yuy2(int r, int g, int b)
+static void rgb_to_ycc(int r, int g, int b, uint8_t *oy, uint8_t *ocb, uint8_t *ocr)
 {
     int y  = (299 * r + 587 * g + 114 * b) / 1000;
     int cb = (-16874 * r - 33126 * g + 50000 * b + 12800000) / 100000;
     int cr = (50000 * r - 41869 * g - 8131 * b + 12800000) / 100000;
-    y  = y  > 255 ? 255 : (y  < 0 ? 0 : y);
-    cb = cb > 255 ? 255 : (cb < 0 ? 0 : cb);
-    cr = cr > 255 ? 255 : (cr < 0 ? 0 : cr);
-    return ((u32)y << 24) | ((u32)cb << 16) | ((u32)y << 8) | (u32)cr;   /* two identical pixels */
+    *oy  = (uint8_t)(y  > 255 ? 255 : (y  < 0 ? 0 : y));
+    *ocb = (uint8_t)(cb > 255 ? 255 : (cb < 0 ? 0 : cb));
+    *ocr = (uint8_t)(cr > 255 ? 255 : (cr < 0 ? 0 : cr));
 }
 
 /* levels have their own colours and lightning flashes brighten them, so the palette is refreshed every frame */
@@ -81,7 +80,7 @@ static void update_palette(const Game *g)
 {
     uint8_t p[PAL_N][3];
     game_get_palette(g, p);
-    for (int i = 0; i < PAL_N; i++) pal_yuy2[i] = rgb_to_yuy2(p[i][0], p[i][1], p[i][2]);
+    for (int i = 0; i < PAL_N; i++) rgb_to_ycc(p[i][0], p[i][1], p[i][2], &pal_y[i], &pal_cb[i], &pal_cr[i]);
 }
 
 static void apply_wide(int w)
@@ -96,7 +95,7 @@ static void apply_wide(int w)
     if (rmode->viTVMode & VI_NON_INTERLACE) VIDEO_WaitVSync();
 }
 
-/* Convert the 320x180 palette image into the YUY2 external framebuffer (crisp, blocky pixels). */
+/* Convert the 640x360 palette image into the YUY2 external framebuffer (crisp pixels). */
 static void present(const uint8_t *src)
 {
     u32 *dst   = (u32 *)xfb[fbi];
@@ -116,7 +115,10 @@ static void present(const uint8_t *src)
         int sr = (y - top) * SCREEN_H / bh;
         if (sr != last) {
             const uint8_t *s = src + sr * SCREEN_W;
-            for (int i = 0; i < words; i++) linebuf[i] = pal_yuy2[s[i * SCREEN_W / words]];
+            for (int i = 0; i < words; i++) {            /* two different pixels per word; they share their chroma */
+                int a = s[(2 * i) * SCREEN_W / W], b2 = s[(2 * i + 1) * SCREEN_W / W];
+                linebuf[i] = ((u32)pal_y[a] << 24) | ((u32)((pal_cb[a] + pal_cb[b2]) >> 1) << 16) | ((u32)pal_y[b2] << 8) | (u32)((pal_cr[a] + pal_cr[b2]) >> 1);
+            }
             last = sr;
         }
         memcpy(row, linebuf, (size_t)words * 4);
@@ -139,18 +141,12 @@ static u32 read_buttons(void)
     if (h & WPAD_CLASSIC_BUTTON_B)     b |= BTN_B;
     if (h & WPAD_CLASSIC_BUTTON_X)     b |= BTN_X;
     if (h & WPAD_CLASSIC_BUTTON_Y)     b |= BTN_Y;
-    if (h & (WPAD_CLASSIC_BUTTON_FULL_L | WPAD_CLASSIC_BUTTON_ZL)) b |= BTN_L;
-    if (h & (WPAD_CLASSIC_BUTTON_FULL_R | WPAD_CLASSIC_BUTTON_ZR)) b |= BTN_R;
+    if (h & WPAD_CLASSIC_BUTTON_ZL)    b |= BTN_L;       /* ZL / ZR: change tower type */
+    if (h & WPAD_CLASSIC_BUTTON_ZR)    b |= BTN_R;
+    if (h & WPAD_CLASSIC_BUTTON_FULL_R) b |= BTN_ZIN;   /* right back trigger: zoom in  */
+    if (h & WPAD_CLASSIC_BUTTON_FULL_L) b |= BTN_ZOUT;  /* left back trigger: zoom out */
     if (h & WPAD_CLASSIC_BUTTON_PLUS)  b |= BTN_PLUS;
     if (h & WPAD_CLASSIC_BUTTON_MINUS) b |= X_MINUS;
-    {   /* right stick: up zooms in, down zooms out */
-        WPADData *wd = WPAD_Data(0);
-        if (wd && wd->exp.type == WPAD_EXP_CLASSIC && wd->exp.classic.rjs.mag > 0.6f) {
-            float a = wd->exp.classic.rjs.ang;            /* degrees, 0 = up, clockwise */
-            if (a < 40.0f || a > 320.0f) b |= BTN_ZIN;
-            else if (a > 140.0f && a < 220.0f) b |= BTN_ZOUT;
-        }
-    }
     if ((h & WPAD_CLASSIC_BUTTON_HOME) || (h & WPAD_BUTTON_HOME)) b |= X_HOME;
     return b;
 }
@@ -186,8 +182,8 @@ int main(int argc, char **argv)
     for (int id = 0; id < SFX_COUNT; id++)     /* ASND reads samples by DMA: flush the cache */
         DCFlushRange((void *)audio_data(id), (u32)audio_len(id) * 2);
 
-    black_yuy2 = rgb_to_yuy2(0, 0, 0);
-    for (int i = 0; i < 256; i++) pal_yuy2[i] = black_yuy2;
+    black_yuy2 = 0x00800080u;                          /* Y=0, Cb=Cr=128 */
+    for (int i = 0; i < 256; i++) { pal_y[i] = 0; pal_cb[i] = 128; pal_cr[i] = 128; }
     update_palette(&game);
 
     rmode = VIDEO_GetPreferredMode(NULL);       /* 480p if the console/Dolphin has progressive scan enabled, else 480i */
@@ -215,8 +211,10 @@ int main(int argc, char **argv)
     const float dt = 1.0f / 60.0f;              /* the game simulates in fixed 1/60 s steps */
     u32 prev = 0;
     u64 last = gettime();
+    float avg_us = 8000.0f;                     /* smoothed time spent on a frame's work (not counting the wait for vsync) */
 
     while (!quit) {
+        u64 frame_start = gettime();
         u32 held = read_buttons();
         u32 pressed = held & ~prev;
         prev = held;
@@ -242,6 +240,10 @@ int main(int argc, char **argv)
         update_palette(&game);
         fbi ^= 1;
         present(fb);
+        /* safety net: if the soft lighting makes frames run long, drop to a lighter look until it speeds up again */
+        avg_us = avg_us * 0.92f + (float)diff_usec(frame_start, gettime()) * 0.08f;
+        if (avg_us > 14000.0f) game.lite = 1;
+        else if (avg_us < 8500.0f) game.lite = 0;
         VIDEO_SetNextFramebuffer(xfb[fbi]);
         VIDEO_Flush();
         VIDEO_WaitVSync();

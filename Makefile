@@ -25,7 +25,7 @@ all: $(TARGET).dol
 $(TARGET).elf: $(OBJS)
 	$(CC) $(OBJS) $(LDFLAGS) $(LIBS) -o $@
 
-$(OBJS): %.o: %.c $(SRCDIR)/game.h $(SRCDIR)/audio.h
+$(OBJS): %.o: %.c $(SRCDIR)/game.h $(SRCDIR)/audio.h $(SRCDIR)/art.inc
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:

@@ -4,7 +4,7 @@
  * Fills the whole map with level-3 towers, then plays wave 20 (3 bosses, ~50 enemies on screen,
  * hundreds of particles, rings, projectiles) and times, per frame:
  *    update  = game_update (simulation)
- *    render  = game_render (320x180 palette framebuffer)
+ *    render  = game_render (640x360 palette framebuffer)
  *    present = palette -> YUY2 640x480 conversion + copy (the same work main.c does on the Wii)
  */
 #define _POSIX_C_SOURCE 199309L
@@ -21,19 +21,18 @@ static double now_ms(void)
     return t.tv_sec * 1000.0 + t.tv_nsec / 1e6;
 }
 
-static uint32_t pal_yuy2[128];
+static uint8_t pal_y[256], pal_cb[256], pal_cr[256];
 static uint32_t xfb[320 * 480];          /* 640x480 YUY2 */
 static uint32_t linebuf[512];
 
-static uint32_t rgb_to_yuy2(int r, int g, int b)
+static void rgb_to_ycc(int r, int g, int b, uint8_t *oy, uint8_t *ocb, uint8_t *ocr)
 {
     int y  = (299 * r + 587 * g + 114 * b) / 1000;
     int cb = (-16874 * r - 33126 * g + 50000 * b + 12800000) / 100000;
     int cr = (50000 * r - 41869 * g - 8131 * b + 12800000) / 100000;
-    y  = y  > 255 ? 255 : (y  < 0 ? 0 : y);
-    cb = cb > 255 ? 255 : (cb < 0 ? 0 : cb);
-    cr = cr > 255 ? 255 : (cr < 0 ? 0 : cr);
-    return ((uint32_t)y << 24) | ((uint32_t)cb << 16) | ((uint32_t)y << 8) | (uint32_t)cr;
+    *oy  = (uint8_t)(y  > 255 ? 255 : (y  < 0 ? 0 : y));
+    *ocb = (uint8_t)(cb > 255 ? 255 : (cb < 0 ? 0 : cb));
+    *ocr = (uint8_t)(cr > 255 ? 255 : (cr < 0 ? 0 : cr));
 }
 
 /* identical in structure to present() in main.c (16:9 anamorphic path) */
@@ -45,7 +44,10 @@ static void present(const uint8_t *src)
         int sr = y * SCREEN_H / H;
         if (sr != last) {
             const uint8_t *s = src + sr * SCREEN_W;
-            for (int i = 0; i < words; i++) linebuf[i] = pal_yuy2[s[i * SCREEN_W / words] & 127];
+            for (int i = 0; i < words; i++) {
+                int a = s[(2 * i) * SCREEN_W / W], b2 = s[(2 * i + 1) * SCREEN_W / W];
+                linebuf[i] = ((uint32_t)pal_y[a] << 24) | ((uint32_t)((pal_cb[a] + pal_cb[b2]) >> 1) << 16) | ((uint32_t)pal_y[b2] << 8) | (uint32_t)((pal_cr[a] + pal_cr[b2]) >> 1);
+            }
             last = sr;
         }
         memcpy(row, linebuf, (size_t)words * 4);
@@ -66,7 +68,7 @@ int main(void)
 {
     static Game g;
     static uint8_t fb[SCREEN_W * SCREEN_H];
-    for (int i = 0; i < 32; i++) pal_yuy2[i] = rgb_to_yuy2(game_palette[i][0], game_palette[i][1], game_palette[i][2]);
+    for (int i = 0; i < PB; i++) rgb_to_ycc(game_palette[i][0], game_palette[i][1], game_palette[i][2], &pal_y[i], &pal_cb[i], &pal_cr[i]);
 
     static const char *names[4] = {
         "A) whole map full of level-3 towers (143), wave 20",

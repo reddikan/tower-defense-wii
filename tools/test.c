@@ -352,8 +352,8 @@ levels:
         for (int i = 0; i < 40; i++) {
             for (int k = 0; k < 6; k++) frame(&g, 0, 0);
             game_render(&g, b);
-            for (int y = 20; y < 36; y++) for (int x = 0; x < 16; x++) tree_changes += a[y * SCREEN_W + x] != b[y * SCREEN_W + x];   /* tree tile 0,0 */
-            for (int y = 100; y < 116; y++) for (int x = 150; x < 210; x++) grass_changes += a[y * SCREEN_W + x] != b[y * SCREEN_W + x];
+            for (int y = 40; y < 72; y++) for (int x = 0; x < 36; x++) tree_changes += a[y * SCREEN_W + x] != b[y * SCREEN_W + x];   /* tree tile 0,0 */
+            for (int y = 200; y < 232; y++) for (int x = 300; x < 420; x++) grass_changes += a[y * SCREEN_W + x] != b[y * SCREEN_W + x];
             memcpy(a, b, sizeof a);
         }
         CHECK(tree_changes > 40, "level 1: the tree in the corner sways");
@@ -385,19 +385,19 @@ levels:
         int arcs = 0; for (int i = 0; i < MAX_ARC; i++) arcs += g.ar[i].life > 0;
         CHECK(arcs >= 2, "chain lightning draws arcs");
         CHECK(heard(&g, SFX_ZAP), "storm tower plays the zap");
-        /* zoom with the right stick */
+        /* zoom with the back triggers */
         game_init(&g); frame(&g, BTN_A, BTN_A);
         static uint8_t a[SCREEN_W * SCREEN_H], b2[SCREEN_W * SCREEN_H];
         game_render(&g, a);
         frame(&g, BTN_ZIN, BTN_ZIN); frame(&g, BTN_ZIN, BTN_ZIN);
         for (int i = 0; i < 60; i++) frame(&g, 0, 0);
-        CHECK(g.zoom_lvl == 2 && g.zoom > 2.9f, "right stick up zooms in to 3x");
+        CHECK(g.zoom_lvl == 2 && g.zoom > 2.9f, "R trigger zooms in to 3x");
         game_render(&g, b2); dump(&g, b2, "zoomed");
         int diff = 0; for (int i = SCREEN_W * 20; i < SCREEN_W * SCREEN_H; i++) diff += a[i] != b2[i];
         CHECK(diff > 5000, "the zoomed picture is different");
         frame(&g, BTN_ZOUT, BTN_ZOUT); frame(&g, BTN_ZOUT, BTN_ZOUT);
         for (int i = 0; i < 90; i++) frame(&g, 0, 0);
-        CHECK(g.zoom_lvl == 0 && g.zoom < 1.05f, "right stick down zooms back out");
+        CHECK(g.zoom_lvl == 0 && g.zoom < 1.05f, "L trigger zooms back out");
         /* the boss is a giant ghost */
         game_init(&g); frame(&g, BTN_A, BTN_A);
         g.en[0].alive = 1; g.en[0].type = EN_BOSS; g.en[0].hp = g.en[0].maxhp = 1000; g.en[0].dist = 60; g.en[0].uid = 900; g.en[0].slow_f = 1;

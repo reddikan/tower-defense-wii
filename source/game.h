@@ -2,7 +2,7 @@
  * TOWER DEFENSE - a retro top-down tower defense game.
  *
  * game.c/game.h are completely platform independent (plain C99). The game
- * renders into a 320x180 (16:9) palette-indexed framebuffer, takes its input
+ * renders into a 640x360 (16:9) palette-indexed framebuffer, takes its input
  * as a bitmask of BTN_* values, and emits sound effects as events that the
  * platform layer pops and plays. main.c (Wii / libogc) is the only file that
  * knows about the console.
@@ -13,15 +13,19 @@
 #include <stdint.h>
 #include "audio.h"
 
-#define SCREEN_W   320
-#define SCREEN_H   180          /* 320x180 == 16:9 */
-#define TILE       16
+#define HS         2            /* the picture is drawn at 2x the logic resolution */
+#define LOGIC_W    320          /* game logic / HUD layout units (16:9) */
+#define LOGIC_H    180
+#define SCREEN_W   (LOGIC_W * HS)   /* 640x360 palette framebuffer */
+#define SCREEN_H   (LOGIC_H * HS)
+#define TILE       16           /* logic units; a tile is 32x32 pixels on screen */
 #define MAP_W      20
 #define MAP_H      10
 #define MAP_Y      20           /* map starts below the 20px HUD */
 #define NUM_WAVES  20           /* longest hand-made wave table; every level then continues endlessly */
 #define NUM_LEVELS 4
-#define PAL_N      160          /* 32 base + 32 warm-lit + 32 cool-lit + 32 faint warm + 32 faint cool (ambient glow) */
+#define PB         48           /* base colours per light ramp */
+#define PAL_N      (PB * 5)     /* 48 base + warm-lit + cool-lit + faint warm + faint cool (ambient glow) */
 
 #define MAX_ENEMIES 160
 #define MAX_PROJ    160
@@ -43,8 +47,8 @@ enum {
     BTN_L     = 1 << 8,
     BTN_R     = 1 << 9,
     BTN_PLUS  = 1 << 10,
-    BTN_ZIN   = 1 << 11,        /* right stick up: zoom in */
-    BTN_ZOUT  = 1 << 12         /* right stick down: zoom out */
+    BTN_ZIN   = 1 << 11,        /* R trigger: zoom in */
+    BTN_ZOUT  = 1 << 12         /* L trigger: zoom out */
 };
 
 typedef enum { ST_TITLE, ST_PLAY, ST_PAUSE, ST_OVER, ST_WIN } GameState;
@@ -94,6 +98,7 @@ typedef struct {
     FText ft[MAX_TEXT];
     Ring  rg[MAX_RING];
     Arc   ar[MAX_ARC];
+    int   lite;                     /* set by the platform layer when frames run long: skips the costly soft lighting */
     int   zoom_lvl;                 /* 0, 1, 2 -> 1x, 2x, 3x (right stick) */
     float zoom, zfx, zfy;           /* current zoom factor and the map point the view is centred on */
 
@@ -120,10 +125,10 @@ typedef struct {
     int     sfx_head, sfx_tail;
     float   sfx_cd[SFX_COUNT];
 
-    uint8_t bg[SCREEN_W * MAP_H * TILE];   /* pre-rendered map */
+    uint8_t bg[SCREEN_W * MAP_H * TILE * HS];   /* pre-rendered map (full resolution) */
 } Game;
 
-extern const uint8_t game_palette[32][3];      /* level 1 base colours */
+extern const uint8_t game_palette[PB][3];      /* level 1 base colours */
 /* The colours to show right now (levels have their own palettes and lightning flashes brighten them). */
 void game_get_palette(const Game *g, uint8_t out[PAL_N][3]);
 const char *game_level_name(int level);
